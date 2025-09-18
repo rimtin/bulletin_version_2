@@ -474,3 +474,63 @@ function init(){
   drawMap("#indiaMapDay2");
 }
 document.addEventListener("DOMContentLoaded", init);
+
+// --- bucket function ---
+function bucketFromPct(pct) {
+  if (pct < 10) return "Clear Sky";
+  if (pct < 30) return "Low Cloud Cover";
+  if (pct < 50) return "Medium Cloud Cover";
+  if (pct < 75) return "High Cloud Cover";
+  return "Overcast Cloud Cover";
+}
+
+// --- fetch helper for 48h hourly cloud_cover ---
+async function fetchHourlyCloud(lat, lon) {
+  const url = `https://api.open-meteo.com/v1/forecast`+
+              `?latitude=${lat}&longitude=${lon}`+
+              `&hourly=cloud_cover&forecast_hours=48&timezone=Asia%2FKolkata`;
+  const r = await fetch(url);
+  const j = await r.json();
+  const arr = j?.hourly?.cloud_cover || [];
+  const mean = a => a.reduce((s,x)=>s+(x??0),0)/a.length;
+  const d1 = bucketFromPct(mean(arr.slice(0,24)));
+  const d2 = bucketFromPct(mean(arr.slice(24,48)));
+  return { d1, d2 };
+}
+
+// --- auto fill for daily.html ---
+async function autoFillDaily() {
+  if (!document.body.classList.contains("auto-daily")) return; // add class in daily.html <body>
+  const centroids = {
+    "Punjab": { lat: 30.84285, lon: 75.41854 },
+    "W-Raj": { lat: 27.15893, lon: 72.70219 },
+    "E-Raj": { lat: 25.81073, lon: 75.39164 }
+  };
+  const results = {};
+  for (const [name, {lat,lon}] of Object.entries(centroids)) {
+    try { results[name] = await fetchHourlyCloud(lat,lon); }
+    catch(e){ console.warn("fetch fail", name, e); }
+  }
+  // Rajasthan = cloudier of West/East
+  if (results["W-Raj"] && results["E-Raj"]) {
+    const rank = {"Clear Sky":0,"Low Cloud Cover":1,"Medium Cloud Cover":2,"High Cloud Cover":3,"Overcast Cloud Cover":4};
+    results["Rajasthan"] = {
+      d1: rank[results["W-Raj"].d1] >= rank[results["E-Raj"].d1] ? results["W-Raj"].d1 : results["E-Raj"].d1,
+      d2: rank[results["W-Raj"].d2] >= rank[results["E-Raj"].d2] ? results["W-Raj"].d2 : results["E-Raj"].d2
+    };
+  }
+  // populate selects
+  document.querySelectorAll("#forecast-table-body tr").forEach(tr => {
+    const st = tr.dataset.state;
+    const s1 = tr.querySelectorAll("select")[0];
+    const s2 = tr.querySelectorAll("select")[1];
+    if (results[st]) {
+      s1.value = results[st].d1;
+      s2.value = results[st].d2;
+      s1.disabled = true; s2.disabled = true;
+    }
+  });
+  updateMapColors();
+}
+
+window.addEventListener("load", autoFillDaily);
