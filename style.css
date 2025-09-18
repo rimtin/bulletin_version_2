@@ -11,6 +11,13 @@ body { font-family: Arial, sans-serif; background: #f2f2f2; display: flex; justi
 .center-title { font-size: 24px; text-align: center; margin-bottom: 6px; }
 .center-date  { font-size: 14px; text-align: center; margin-bottom: 10px; }
 
+/* NEW: Hourly control */
+.hour-controls{
+  display:flex; align-items:center; gap:10px;
+  justify-content:center; margin:8px 0 6px;
+}
+#hourSelect{ width:260px; }
+
 /* Notes block */
 .bulletin-text {
   border: 1px solid #ccc; padding: 10px; margin: 20px auto; border-radius: 6px;
@@ -25,7 +32,7 @@ body { font-family: Arial, sans-serif; background: #f2f2f2; display: flex; justi
 .forecast-table th, .forecast-table td { border: 1.4px solid #222; padding: 6px; text-align: center; vertical-align: middle; }
 .cloud-info-table th, .forecast-table th { background-color: #cce6ff; font-weight: bold; }
 
-/* Stripe only forecast/subdivision tables (not the colored classification swatches) */
+/* Stripe only forecast/subdivision tables */
 .forecast-table tbody tr:nth-child(even) { background: #f9f9f9; }
 .cloud-cover-reference .cloud-info-table tbody tr:nth-child(even) { background: transparent; }
 
@@ -48,7 +55,7 @@ svg { width: 100%; height: 520px; display: block; border: 1px solid #ccc; margin
 .legend-swatch { width: 18px; height: 18px; border: 1.4px solid #222; margin-right: 6px; display: inline-block; border-radius: 3px; }
 .map-legend .legend-pattern { display:inline-block; width:18px; height:18px; margin-right:6px; border:1.4px solid #222; border-radius:3px; background-image: repeating-linear-gradient(45deg, #999 0, #999 1px, transparent 1px, transparent 4px); }
 
-/* Excel palette swatches */
+/* Excel swatches */
 .swatch-clear    { background:#9ED1E6 !important; color:#063647; font-weight:600; }
 .swatch-low      { background:#B9DB6E !important; color:#2C4400; font-weight:600; }
 .swatch-medium   { background:#FFE93A !important; color:#4A3D00; font-weight:700; }
