@@ -1,58 +1,59 @@
-/* --- Base reset --- */
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: Arial, sans-serif; background:#f2f2f2; color:#111; }
+/* ========= Cloud Bulletin Shared Styles ========= */
 
-/* --- Container --- */
-.container { max-width: 900px; margin: 24px auto; padding: 0 16px; }
-
-/* --- Top nav --- */
-.navbar{
-  display:flex; align-items:center; justify-content:space-between;
-  background:#111; color:#fff; padding:10px 12px; border-radius:10px;
+/* Font */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+body {
+  font-family: 'Inter', sans-serif;
 }
-.brand{ font-weight:900; letter-spacing:.3px; }
-.nav-btns{ display:flex; gap:10px; }
-.nav-btns a{
-  text-decoration:none; color:#111; background:#fff; border-radius:8px;
-  padding:6px 12px; font-weight:700; border:1px solid #ddd;
+
+/* Glass utility (for cards/nav) */
+.glass {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
 }
-.nav-btns a.active{ background:#0b5ef0; color:#fff; border-color:#0b5ef0; }
 
-/* --- Title + date --- */
-h1{ margin:14px 0 6px; font-size:22px; text-align:center; }
-.center-date{ text-align:center; color:#333; margin-bottom:10px; }
-
-/* --- Hour controls (hourly page) --- */
-.hour-controls{
-  display:flex; gap:10px; align-items:center; justify-content:center; margin:10px 0 4px;
+/* Navbar buttons */
+.nav-btn {
+  @apply px-4 py-1 rounded-lg font-semibold;
+  background: #fff;
+  color: #111;
+  border: 1px solid #ddd;
 }
-#hourSelect{ width:300px; }
-
-/* --- Tables --- */
-.table{ width:100%; border-collapse:collapse; margin:14px 0; background:#fff;
-  border:1.4px solid #222; border-radius:10px; overflow:hidden; }
-.table th, .table td{
-  border:1.4px solid #222; padding:8px; text-align:center; vertical-align:middle;
+.nav-btn:hover {
+  background: #eee;
 }
-.table th{ background:#cce6ff; }
-.table tbody tr:nth-child(even){ background:#f9f9f9; }
+.nav-btn.active {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
 
-/* --- Buckets (background color helpers) --- */
+/* Tables */
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+th, td {
+  border: 1px solid rgba(255,255,255,0.3);
+  padding: 8px;
+}
+thead {
+  background: rgba(255, 255, 255, 0.2);
+  font-weight: 600;
+}
+tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Notes textarea */
+textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+/* Cloud classification swatches */
 .swatch-clear    { background:#A7D8EB !important; }
 .swatch-low      { background:#C4E17F !important; }
-.swatch-medium   { background:#FFF952 !important; }
+.swatch-medium   { background:#FFF952 !important; color:#000; }
 .swatch-high     { background:#E69536 !important; }
-.swatch-overcast { background:#FF4D4D !important; }
-
-/* --- Notes --- */
-.note{ margin:8px 0; color:#444; }
-
-.map-title { text-align:center; margin-top:16px; }
-.map-wrap { position:relative; margin:10px auto; max-width: 860px; }
-.map-wrap svg { width:100%; height:auto; border:1px solid #ccc; border-radius:10px; background:#fff; }
-.map-legend { position:absolute; top:10px; right:10px; background:#fff; border:1px solid #ccc; border-radius:8px; padding:8px 10px; font-size:12px; }
-.map-legend ul { list-style:none; margin:0; padding:0; }
-.map-legend li { display:flex; align-items:center; gap:6px; margin:4px 0; }
-.legend-s { width:16px; height:16px; border:1.4px solid #222; display:inline-block; border-radius:3px; }
-.legend-pattern { background-image: repeating-linear-gradient(45deg,#999 0,#999 1px,transparent 1px,transparent 4px); }
-
+.swatch-overcast { background:#FF4D4D !important; color:#fff; }
