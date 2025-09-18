@@ -1,46 +1,276 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>Hourly — Sub-Division (Automatic)</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link href="style.css" rel="stylesheet">
-  <script defer src="data.js"></script>
-  <script defer src="hourly.js"></script>
+  <meta charset="utf-8" />
+  <title>☁️ Cloud Bulletin – Hourly</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Fonts / helpers -->
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;600;700;800&display=swap');
+    body { font-family: 'Nunito', sans-serif; }
+    .shadow-soft { box-shadow: 0 10px 25px -5px rgba(0,0,0,.10), 0 10px 10px -5px rgba(0,0,0,.04); }
+    .gradient-text {
+      background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+      -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    /* Slim, subtle custom arrow for selects */
+    select { appearance: none; -webkit-appearance: none; -moz-appearance: none; padding-right: 1.75rem; }
+    .select-wrap { position: relative; }
+    .select-wrap::after{
+      content:"▾"; position:absolute; right:.5rem; top:50%; transform:translateY(-50%);
+      font-size:12px; color:#111827; pointer-events:none; opacity:.7;
+    }
+    /* Bucket chips */
+    .chip{display:inline-block; padding:.15rem .45rem; border-radius:.5rem; font-size:.75rem; font-weight:700;}
+  </style>
 </head>
-<body>
-  <div class="container">
-    <div class="navbar">
-      <div class="brand">Cloud Bulletin</div>
-      <div class="nav-btns">
-        <a href="index.html">home</a>
-        <a href="daily.html">daily</a>
-        <a class="active" href="hourly.html">hourly</a>
+
+<body class="bg-gray-50 text-gray-800 min-h-screen" data-hourly="true">
+  <!-- Nav -->
+  <nav class="max-w-6xl mx-auto px-4 mt-6">
+    <div class="bg-white shadow-soft rounded-2xl px-5 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-2xl">☁️</span>
+        <span class="text-lg font-extrabold gradient-text">Cloud Bulletin</span>
+      </div>
+      <div class="flex gap-2">
+        <a href="index.html"  class="px-4 py-2 rounded-xl bg-white shadow-sm font-semibold">home</a>
+        <a href="daily.html"  class="px-4 py-2 rounded-xl bg-white shadow-sm font-semibold">daily</a>
+        <a href="hourly.html" class="px-4 py-2 rounded-xl font-semibold text-white" style="background:linear-gradient(135deg,#667eea,#764ba2)">hourly</a>
       </div>
     </div>
+  </nav>
 
-    <h1>Hourly Sub-Division Forecast (Auto)</h1>
-    <div id="dateEl" class="center-date"></div>
+  <main class="max-w-6xl mx-auto px-4 py-8">
+    <!-- Header -->
+    <header class="bg-white shadow-soft rounded-3xl p-6 mb-6">
+      <div class="flex flex-col md:flex-row items-center justify-between gap-4">
+        <div class="text-center md:text-left">
+          <h1 class="text-3xl md:text-4xl font-extrabold gradient-text">Hourly Cloud Cover (Next 48 h)</h1>
+          <p class="text-gray-500 mt-1">IST now: <span id="now-ist">—</span></p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btn24" class="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 font-semibold">Next 24 h</button>
+          <button id="btn48" class="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 font-semibold">Hours 25–48</button>
+          <button id="btnAll" class="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 font-semibold">All 48 h</button>
+          <button id="btnRefresh" class="px-3 py-2 rounded-lg text-white" style="background:linear-gradient(135deg,#667eea,#764ba2)">Refresh</button>
+        </div>
+      </div>
+    </header>
 
-    <div class="hour-controls">
-      <label for="hourSelect"><strong>Hourly (IST):</strong></label>
-      <input id="hourSelect" type="range" min="0" max="47" value="0" step="1">
-      <span id="hourLabel">—</span>
-      <button id="refreshNow" type="button">Refresh</button>
-    </div>
+    <!-- Legend -->
+    <section class="bg-white shadow-soft rounded-2xl p-4 mb-6">
+      <div class="flex flex-wrap gap-3 items-center text-sm">
+        <span class="font-bold">Index:</span>
+        <span class="chip" style="background:#66CCFF">Clear Sky</span>
+        <span class="chip" style="background:#57E66D">Low Cloud Cover</span>
+        <span class="chip" style="background:#FFF500">Medium Cloud Cover</span>
+        <span class="chip" style="background:#FF8A00">High Cloud Cover</span>
+        <span class="chip text-white" style="background:#FF0000">Overcast Cloud Cover</span>
+        <span class="text-gray-500 ml-2">(% is Open-Meteo total cloud cover at that hour)</span>
+      </div>
+    </section>
 
-    <table id="hourlyTable" class="table">
-      <thead>
-        <tr>
-          <th>S. No.</th>
-          <th>State</th>
-          <th>Sub Division</th>
-          <th>Bucket</th>
-          <th>% Cloud</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </div>
+    <!-- Hourly Table -->
+    <section class="bg-white shadow-soft rounded-3xl p-6 mb-12">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-xl font-bold">Hour-by-Hour</h2>
+        <div class="select-wrap">
+          <select id="zoneSelect" class="px-3 py-2 rounded-lg border border-gray-200 bg-white">
+            <option value="all">All regions</option>
+            <option value="Punjab">Punjab only</option>
+            <option value="West Rajasthan">West Rajasthan only</option>
+            <option value="East Rajasthan">East Rajasthan only</option>
+            <option value="Rajasthan">Rajasthan (cloudier of W/E)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="text-left px-3 py-2">Hour (IST)</th>
+              <th class="text-left px-3 py-2">Punjab</th>
+              <th class="text-left px-3 py-2">West Rajasthan</th>
+              <th class="text-left px-3 py-2">East Rajasthan</th>
+              <th class="text-left px-3 py-2">Rajasthan (W/E max)</th>
+            </tr>
+          </thead>
+          <tbody id="hourly-body" class="text-gray-800"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // ---------- Config ----------
+    const CENTROIDS = {
+      "Punjab":         { lat: 30.84284696845263, lon: 75.41854251284677 },
+      "West Rajasthan": { lat: 27.1589259099715,  lon: 72.70218563309521 },
+      "East Rajasthan": { lat: 25.810727217600284,lon: 75.39163711411086 }
+    };
+    const COLORS = {
+      "Clear Sky":            "#66CCFF",
+      "Low Cloud Cover":      "#57E66D",
+      "Medium Cloud Cover":   "#FFF500",
+      "High Cloud Cover":     "#FF8A00",
+      "Overcast Cloud Cover": "#FF0000"
+    };
+    const RANK = { "Clear Sky":0,"Low Cloud Cover":1,"Medium Cloud Cover":2,"High Cloud Cover":3,"Overcast Cloud Cover":4 };
+
+    // ---------- Buckets ----------
+    function bucketFromPct(p){
+      if (p < 10) return "Clear Sky";
+      if (p < 30) return "Low Cloud Cover";
+      if (p < 50) return "Medium Cloud Cover";
+      if (p < 75) return "High Cloud Cover";
+      return "Overcast Cloud Cover";
+    }
+
+    // ---------- Open-Meteo fetch (48h hourly) ----------
+    async function fetchHourly(lat, lon){
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=cloud_cover&forecast_hours=48&timezone=Asia%2FKolkata`;
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) throw new Error("Open-Meteo error");
+      const j = await r.json();
+      const hours = j?.hourly?.time || [];
+      const vals  = j?.hourly?.cloud_cover || [];
+      return { hours, vals };
+    }
+
+    // ---------- Build combined dataset ----------
+    async function loadAll(){
+      const out = {}; // name -> {hours, vals, buckets}
+      // fetch three
+      await Promise.all(Object.entries(CENTROIDS).map(async ([name,{lat,lon}])=>{
+        const {hours, vals} = await fetchHourly(lat, lon);
+        out[name] = { hours, vals, buckets: vals.map(bucketFromPct) };
+      }));
+      // Build Rajasthan (cloudier of W/E per hour)
+      const wr = out["West Rajasthan"], er = out["East Rajasthan"];
+      const hrs = wr.hours.length >= er.hours.length ? wr.hours : er.hours;
+      const rzVals = hrs.map((_,i)=>{
+        const a = wr.vals[i] ?? 0, b = er.vals[i] ?? 0;
+        return Math.max(a,b);  // max % is “cloudier”
+      });
+      out["Rajasthan"] = { hours: hrs, vals: rzVals, buckets: rzVals.map(bucketFromPct) };
+      return out;
+    }
+
+    // ---------- Render table ----------
+    function fmtIST(s){
+      // s is ISO string already in Asia/Kolkata per query; format HH:MM, weekday/day
+      const d = new Date(s);
+      return d.toLocaleString("en-IN", {
+        hour: "2-digit", minute: "2-digit",
+        weekday: "short", day: "2-digit", month: "short",
+        hour12: true, timeZone: "Asia/Kolkata"
+      });
+    }
+
+    function tdBucket(pct, bucket){
+      const color = COLORS[bucket] || "#eee";
+      const emoji = { "Clear Sky":"☀️","Low Cloud Cover":"🌤️","Medium Cloud Cover":"⛅","High Cloud Cover":"🌥️","Overcast Cloud Cover":"☁️" }[bucket] || "";
+      return `<div class="flex items-center gap-2">
+        <span class="inline-block w-3 h-3 rounded" style="background:${color}"></span>
+        <span class="font-semibold">${Math.round(pct)}%</span>
+        <span class="text-xs">${bucket}</span>
+        <span>${emoji}</span>
+      </div>`;
+    }
+
+    function paintTable(data, view="24", filter="all"){
+      const body = document.getElementById("hourly-body");
+      body.innerHTML = "";
+
+      // Determine slice
+      let s = 0, e = 48;
+      if (view === "24") { s = 0; e = 24; }
+      if (view === "48") { s = 24; e = 48; }
+
+      const H = data["Punjab"].hours.slice(s,e);
+      for (let i = 0; i < H.length; i++){
+        const tr = document.createElement("tr");
+        tr.className = (i%2 ? "bg-gray-50/50" : "");
+
+        const hourCell = `<td class="px-3 py-2 whitespace-nowrap">${fmtIST(H[i])}</td>`;
+        const p = data["Punjab"].vals[s+i] ?? 0;
+        const pb = data["Punjab"].buckets[s+i] ?? bucketFromPct(p);
+        const w = data["West Rajasthan"].vals[s+i] ?? 0;
+        const wb = data["West Rajasthan"].buckets[s+i] ?? bucketFromPct(w);
+        const eRaj = data["East Rajasthan"].vals[s+i] ?? 0;
+        const eb = data["East Rajasthan"].buckets[s+i] ?? bucketFromPct(eRaj);
+        const rMax = Math.max(w, eRaj);
+        const rb = bucketFromPct(rMax);
+
+        const cells = {
+          "Punjab": `<td class="px-3 py-2">${tdBucket(p,pb)}</td>`,
+          "West Rajasthan": `<td class="px-3 py-2">${tdBucket(w,wb)}</td>`,
+          "East Rajasthan": `<td class="px-3 py-2">${tdBucket(eRaj,eb)}</td>`,
+          "Rajasthan": `<td class="px-3 py-2">${tdBucket(rMax,rb)}</td>`
+        };
+
+        // filter
+        let rowHtml = hourCell;
+        if (filter==="all" || filter==="Punjab") rowHtml += cells["Punjab"]; else rowHtml += `<td></td>`;
+        if (filter==="all" || filter==="West Rajasthan") rowHtml += cells["West Rajasthan"]; else rowHtml += `<td></td>`;
+        if (filter==="all" || filter==="East Rajasthan") rowHtml += cells["East Rajasthan"]; else rowHtml += `<td></td>`;
+        if (filter==="all" || filter==="Rajasthan") rowHtml += cells["Rajasthan"]; else rowHtml += `<td></td>`;
+
+        tr.innerHTML = rowHtml;
+        body.appendChild(tr);
+      }
+    }
+
+    // ---------- Controls / init ----------
+    let CACHE = null;
+    function updateNowIST(){
+      const now = new Date();
+      document.getElementById("now-ist").textContent =
+        now.toLocaleString("en-IN",{ timeZone:"Asia/Kolkata", hour:'2-digit', minute:'2-digit', weekday:'long', year:'numeric', month:'long', day:'numeric', hour12:true });
+    }
+
+    document.addEventListener("DOMContentLoaded", async () => {
+      updateNowIST();
+      setInterval(updateNowIST, 60000);
+
+      // load all 3 + derived Rajasthan
+      const spinner = () => {/* no-op minimal */};
+      try{
+        CACHE = await loadAll();
+        paintTable(CACHE, "24", "all");
+      }catch(e){
+        console.error(e);
+        alert("Could not load hourly cloud cover from Open-Meteo.");
+      }
+
+      // buttons
+      const btn24 = document.getElementById("btn24");
+      const btn48 = document.getElementById("btn48");
+      const btnAll= document.getElementById("btnAll");
+      const zSel  = document.getElementById("zoneSelect");
+      const refresh = document.getElementById("btnRefresh");
+
+      let view = "24";
+      let filter = "all";
+
+      function repaint(){ if (CACHE) paintTable(CACHE, view, filter); }
+
+      btn24.addEventListener("click", ()=>{ view="24"; repaint(); });
+      btn48.addEventListener("click", ()=>{ view="48"; repaint(); });
+      btnAll.addEventListener("click", ()=>{ view="all"; repaint(); });
+      zSel.addEventListener("change", ()=>{ filter = zSel.value; repaint(); });
+
+      refresh.addEventListener("click", async ()=>{
+        try{ CACHE = await loadAll(); repaint(); }
+        catch(e){ console.error(e); alert("Refresh failed."); }
+      });
+    });
+  </script>
 </body>
 </html>
