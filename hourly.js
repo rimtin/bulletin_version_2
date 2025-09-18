@@ -2,7 +2,6 @@ const IST_TZ = "Asia/Kolkata";
 const MAX_HOURS = 48;
 const hourlyStore = {}; // "State|Sub" -> { times:[], values:[] }
 
-// Fetch 48h hourly cloud_cover from Open-Meteo
 async function fetchHourly(lat, lon) {
   const url = new URL("https://api.open-meteo.com/v1/forecast");
   url.searchParams.set("latitude",  lat.toFixed(4));
@@ -22,7 +21,7 @@ async function fetchHourly(lat, lon) {
 async function refreshAllHourly() {
   const tasks = subdivisions.map(async s => {
     const key = `${s.state}|${s.name}`;
-    const c = hourlyCentroids[key];
+    const c = centroids[key];
     if (!c) return;
     try {
       const {times, values} = await fetchHourly(c.lat, c.lon);
@@ -64,28 +63,17 @@ function populateTable(hourIdx) {
       <td>${i++}</td>
       <td>${s.state}</td>
       <td>${s.name}</td>
-      <td class="swatch ${classFor(bucket)}">${bucket}</td>
+      <td class="${classForBucket(bucket)}">${bucket}</td>
       <td>${Number.isFinite(pct) ? pct.toFixed(0)+"%" : "—"}</td>
     `;
     tbody.appendChild(tr);
   });
 }
 
-function classFor(bucket){
-  switch(bucket){
-    case "Clear Sky": return "swatch-clear";
-    case "Low Cloud Cover": return "swatch-low";
-    case "Medium Cloud Cover": return "swatch-medium";
-    case "High Cloud Cover": return "swatch-high";
-    case "Overcast Cloud Cover": return "swatch-overcast";
-    default: return "";
-  }
-}
-
 document.addEventListener("DOMContentLoaded", async () => {
   updateISTDate("dateEl");
 
-  // Prepare empty table once
+  // set up table shell
   const tbody = document.querySelector("#hourlyTable tbody");
   tbody.innerHTML = subdivisions.map((s,i)=>`
     <tr>
@@ -97,10 +85,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     </tr>
   `).join("");
 
-  // Wire controls
+  // controls
   const input = document.getElementById("hourSelect");
   const btn = document.getElementById("refreshNow");
-  const setHour = (h)=> populateTable(Math.max(0, Math.min(MAX_HOURS-1, Number(h)||0)));
+  const setHour = h => populateTable(Math.max(0, Math.min(MAX_HOURS-1, Number(h)||0)));
   input.addEventListener("input", e => setHour(e.target.value));
   btn.addEventListener("click", async () => {
     btn.disabled = true;
@@ -109,11 +97,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     btn.disabled = false;
   });
 
-  // First load
+  // first load
   await refreshAllHourly();
   setHour(0);
 
-  // Optional: refresh every hour
+  // optional: refresh every hour
   setInterval(async () => {
     await refreshAllHourly();
     setHour(input.value);
