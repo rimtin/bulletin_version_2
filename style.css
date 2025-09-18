@@ -22,7 +22,7 @@ body { font-family: Arial, sans-serif; background:#f2f2f2; color:#111; }
 h1{ margin:14px 0 6px; font-size:22px; text-align:center; }
 .center-date{ text-align:center; color:#333; margin-bottom:10px; }
 
-/* --- Hour controls (hourly page only) --- */
+/* --- Hour controls (hourly page) --- */
 .hour-controls{
   display:flex; gap:10px; align-items:center; justify-content:center; margin:10px 0 4px;
 }
@@ -37,7 +37,7 @@ h1{ margin:14px 0 6px; font-size:22px; text-align:center; }
 .table th{ background:#cce6ff; }
 .table tbody tr:nth-child(even){ background:#f9f9f9; }
 
-/* --- Palette swatches (legend/labels if needed) --- */
+/* --- Buckets (background color helpers) --- */
 .swatch-clear    { background:#A7D8EB !important; }
 .swatch-low      { background:#C4E17F !important; }
 .swatch-medium   { background:#FFF952 !important; }
