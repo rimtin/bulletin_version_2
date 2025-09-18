@@ -1,84 +1,77 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>Daily — Sub-Division (Automatic)</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link href="style.css" rel="stylesheet">
+  <meta charset="utf-8" />
+  <title>Daily — Sub-Division Forecast (Auto)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="style.css" rel="stylesheet" />
 
   <!-- libs for maps -->
-  <script src="https://d3js.org/d3.v7.min.js"></script>
-  <script src="https://unpkg.com/topojson-client@3"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
 
-  <!-- your data / helpers -->
+  <!-- your shared data/helpers -->
   <script defer src="data.js"></script>
-
-  <!-- this file (updated below) -->
+  <!-- this page’s logic -->
   <script defer src="daily.js"></script>
 </head>
 <body>
   <div class="container">
+
+    <!-- pill navbar (same as home) -->
     <div class="navbar">
       <div class="brand">Cloud Bulletin</div>
-      <div class="nav-btns">
+      <nav class="nav-btns" aria-label="Primary">
         <a href="index.html">home</a>
-        <a class="active" href="daily.html">daily</a>
+        <a href="daily.html" class="active">daily</a>
         <a href="hourly.html">hourly</a>
-      </div>
+      </nav>
     </div>
 
-    <h1>Daily Sub-Division Forecast (Auto)</h1>
-    <div id="dateEl" class="center-date"></div>
-
-    <!-- Daily auto table -->
-    <table id="dailyTable" class="table">
-      <thead>
-        <tr>
-          <th rowspan="2">S. No.</th>
-          <th rowspan="2">State</th>
-          <th rowspan="2">Sub Division</th>
-          <th colspan="2">Day 1 (Today)</th>
-          <th colspan="2">Day 2 (Tomorrow)</th>
-        </tr>
-        <tr>
-          <th>Bucket</th><th>%</th>
-          <th>Bucket</th><th>%</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-
-    <!-- Day 1 Map -->
-    <h2 class="map-title">Day 1 Forecast Map</h2>
-    <div class="map-wrap">
-      <svg id="mapDay1" viewBox="0 0 860 580" aria-label="Day 1 India Map"></svg>
-      <div class="map-legend">
-        <ul>
-          <li><span class="legend-s swatch-clear"></span> Clear</li>
-          <li><span class="legend-s swatch-low"></span> Low</li>
-          <li><span class="legend-s swatch-medium"></span> Medium</li>
-          <li><span class="legend-s swatch-high"></span> High</li>
-          <li><span class="legend-s swatch-overcast"></span> Overcast</li>
-          <li><span class="legend-s legend-pattern"></span> No Forecast</li>
-        </ul>
+    <!-- header -->
+    <header class="header">
+      <div class="title-wrap">
+        <h1>Daily Sub-Division Forecast (Auto)</h1>
+        <div class="subhead">Forecast Date: <span id="dateEl">—</span></div>
       </div>
-    </div>
-
-    <!-- Day 2 Map -->
-    <h2 class="map-title">Day 2 Forecast Map</h2>
-    <div class="map-wrap">
-      <svg id="mapDay2" viewBox="0 0 860 580" aria-label="Day 2 India Map"></svg>
-      <div class="map-legend">
-        <ul>
-          <li><span class="legend-s swatch-clear"></span> Clear</li>
-          <li><span class="legend-s swatch-low"></span> Low</li>
-          <li><span class="legend-s swatch-medium"></span> Medium</li>
-          <li><span class="legend-s swatch-high"></span> High</li>
-          <li><span class="legend-s swatch-overcast"></span> Overcast</li>
-          <li><span class="legend-s legend-pattern"></span> No Forecast</li>
-        </ul>
+      <div class="actions">
+        <button class="btn screen-only" onclick="window.print()">Download PDF</button>
       </div>
-    </div>
+    </header>
+
+    <!-- table card -->
+    <section class="card">
+      <h3>Sub-Divisions (Auto) — Day 1 & Day 2</h3>
+      <div class="table-wrap">
+        <table id="dailyTable" class="data-table">
+          <thead>
+            <tr>
+              <th style="width:72px">S. No.</th>
+              <th style="width:240px">State</th>
+              <th>Sub Division</th>
+              <th style="width:160px">Day 1 — Bucket</th>
+              <th style="width:110px">Day 1 — %</th>
+              <th style="width:160px">Day 2 — Bucket</th>
+              <th style="width:110px">Day 2 — %</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- maps -->
+    <section class="print-page">
+      <div class="map-card page-break-avoid">
+        <h4>Map — Day 1</h4>
+        <svg id="mapDay1" viewBox="0 0 860 580" width="100%" height="420" aria-label="Day 1 India Map"></svg>
+      </div>
+
+      <div class="map-card page-break-avoid">
+        <h4>Map — Day 2</h4>
+        <svg id="mapDay2" viewBox="0 0 860 580" width="100%" height="420" aria-label="Day 2 India Map"></svg>
+      </div>
+    </section>
 
   </div>
 </body>
