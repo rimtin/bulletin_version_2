@@ -1,5 +1,45 @@
+// ---------- CONFIG ----------
 const DAILY_TZ = "Asia/Kolkata";
-const INDIA_TOPO_URL = "https://raw.githubusercontent.com/udit-001/india-maps-data/refs/heads/main/topojson/india.json";
+// Robust CDN path (kept separate so you can swap easily if you mirror it)
+const INDIA_TOPO_URL = "https://cdn.jsdelivr.net/gh/udit-001/india-maps-data@main/topojson/india.json";
+
+// If your data.js didn’t define these helpers, make minimal no-op fallbacks:
+window.forecastColors = window.forecastColors || {
+  "Clear Sky": "#A7D8EB",
+  "Low Cloud Cover": "#C4E17F",
+  "Medium Cloud Cover": "#FFF952",
+  "High Cloud Cover": "#E69536",
+  "Overcast Cloud Cover": "#FF4D4D"
+};
+window.forecastOptions = window.forecastOptions || Object.keys(window.forecastColors);
+
+function pctToBucket(pct){
+  if (!Number.isFinite(pct)) return "No Forecast";
+  if (pct < 10) return "Clear Sky";
+  if (pct < 30) return "Low Cloud Cover";
+  if (pct < 60) return "Medium Cloud Cover";
+  if (pct < 85) return "High Cloud Cover";
+  return "Overcast Cloud Cover";
+}
+function classForBucket(b){
+  return {
+    "Clear Sky": "cell-clear",
+    "Low Cloud Cover": "cell-low",
+    "Medium Cloud Cover": "cell-medium",
+    "High Cloud Cover": "cell-high",
+    "Overcast Cloud Cover": "cell-overcast",
+    "No Forecast": "cell-noforecast"
+  }[b] || "";
+}
+function updateISTDate(id){
+  try{
+    const el = document.getElementById(id);
+    const fmt = new Intl.DateTimeFormat("en-IN", {
+      timeZone: DAILY_TZ, weekday: "long", year: "numeric", month: "long", day: "numeric"
+    });
+    el.textContent = fmt.format(new Date());
+  }catch(e){}
+}
 
 // ---------- DAILY API ----------
 async function fetchDaily(lat, lon){
@@ -23,7 +63,7 @@ async function fetchDaily(lat, lon){
 async function buildDailyTableAndData() {
   updateISTDate("dateEl");
   const tbody = document.querySelector("#dailyTable tbody");
-  tbody.innerHTML = subdivisions.map((s,i)=>`
+  const rows = (window.subdivisions || []).map((s,i)=>`
     <tr id="row-${i}">
       <td>${i+1}</td>
       <td>${s.state}</td>
@@ -34,12 +74,12 @@ async function buildDailyTableAndData() {
       <td class="d2-pct">—</td>
     </tr>
   `).join("");
+  tbody.innerHTML = rows;
 
-  // fetch daily for each sub-division
   const dailyByKey = {}; // "State|Sub" -> {d1Pct, d2Pct, d1Bucket, d2Bucket}
-  await Promise.allSettled(subdivisions.map(async (s, i) => {
+  await Promise.allSettled((window.subdivisions || []).map(async (s, i) => {
     const key = `${s.state}|${s.name}`;
-    const c = centroids[key];
+    const c = (window.centroids || {})[key];
     if (!c) return;
 
     try {
@@ -52,6 +92,7 @@ async function buildDailyTableAndData() {
       dailyByKey[key] = { d1Pct:d1, d2Pct:d2, d1Bucket:b1, d2Bucket:b2 };
 
       const tr = document.getElementById(`row-${i}`);
+      if (!tr) return;
       const d1b = tr.querySelector(".d1-bucket"); const d1p = tr.querySelector(".d1-pct");
       const d2b = tr.querySelector(".d2-bucket"); const d2p = tr.querySelector(".d2-pct");
 
@@ -68,7 +109,24 @@ async function buildDailyTableAndData() {
 }
 
 // ---------- MAP DRAW ----------
-function drawBaseMap(svgId, features, projection, allowedStates) {
+function findIndiaObjectName(topology){
+  // Pick the first object that looks like "states" (has st_nm / STATE_NAME)
+  const candidates = Object.keys(topology.objects || {});
+  for (const k of candidates){
+    try{
+      const f = topojson.feature(topology, topology.objects[k]).features || [];
+      if (!f.length) continue;
+      const p = f[0].properties || {};
+      if ("st_nm" in p || "ST_NM" in p || "state" in p || "STATE" in p || "NAME_1" in p) return k;
+    }catch(e){}
+  }
+  // fallback to first
+  return candidates[0];
+}
+function getStateName(props){
+  return props.st_nm || props.ST_NM || props.state || props.STATE || props.NAME_1 || props.name || "";
+}
+function drawBaseMap(svgId, features, allowedStates) {
   const svg = d3.select(svgId);
   svg.selectAll("*").remove();
 
@@ -83,23 +141,28 @@ function drawBaseMap(svgId, features, projection, allowedStates) {
     .attr("stroke", "#999")
     .attr("stroke-width", 1);
 
+  // Fit projection to the features and the current SVG viewBox
+  const vb = svg.attr("viewBox").split(" ").map(Number); // [0,0,860,580]
+  const width = vb[2], height = vb[3];
+  const projection = d3.geoMercator();
   const path = d3.geoPath(projection);
+  projection.fitSize([width, height], {type:"FeatureCollection", features});
 
   svg.selectAll("path.state")
     .data(features)
     .join("path")
     .attr("class", "state")
     .attr("d", path)
-    .attr("id", d => d.properties.st_nm)
-    .attr("fill", d => allowedStates.includes(d.properties.st_nm) ? "#ccc" : "url(#diagonalHatch)")
+    .attr("id", d => getStateName(d.properties))
+    .attr("fill", d => allowedStates.has(getStateName(d.properties)) ? "#ccc" : "url(#diagonalHatch)")
     .attr("stroke", "#333")
-    .attr("stroke-width", 1);
+    .attr("stroke-width", 0.8);
 }
 
 function colorStatesForDay(svgId, bucketsByState) {
   const svg = d3.select(svgId);
   Object.entries(bucketsByState).forEach(([state, bucket]) => {
-    const sel = svg.select(`[id='${state}']`);
+    const sel = svg.select(`[id='${CSS.escape(state)}']`);
     if (!sel.empty()) sel.attr("fill", forecastColors[bucket] || "#ccc");
   });
 }
@@ -108,45 +171,41 @@ function colorStatesForDay(svgId, bucketsByState) {
 document.addEventListener("DOMContentLoaded", async () => {
   const dailyByKey = await buildDailyTableAndData();
 
-  // Aggregate to state-level for coloring:
-  // Punjab -> its own; Rajasthan -> cloudier (max) of W/E
+  // Aggregate to state-level (max = "cloudier")
   const day1ByState = {};
   const day2ByState = {};
+  const statesInTable = new Set((window.subdivisions || []).map(s => s.state));
 
-  // Punjab
-  const PB1 = dailyByKey["Punjab|Punjab"]?.d1Pct;
-  const PB2 = dailyByKey["Punjab|Punjab"]?.d2Pct;
-  day1ByState["Punjab"]    = pctToBucket(PB1);
-  day2ByState["Punjab"]    = pctToBucket(PB2);
+  for (const s of (window.subdivisions || [])) {
+    const key = `${s.state}|${s.name}`;
+    const rec = dailyByKey[key];
+    if (!rec) continue;
+    const d1 = Number.isFinite(rec.d1Pct) ? rec.d1Pct : -1;
+    const d2 = Number.isFinite(rec.d2Pct) ? rec.d2Pct : -1;
 
-  // Rajasthan (max of East & West)
-  const RJW1 = dailyByKey["Rajasthan|W-Raj"]?.d1Pct;
-  const RJW2 = dailyByKey["Rajasthan|W-Raj"]?.d2Pct;
-  const RJE1 = dailyByKey["Rajasthan|E-Raj"]?.d1Pct;
-  const RJE2 = dailyByKey["Rajasthan|E-Raj"]?.d2Pct;
+    if (!day1ByState[s.state] || d1 > day1ByState[s.state].pct) day1ByState[s.state] = { pct: d1 };
+    if (!day2ByState[s.state] || d2 > day2ByState[s.state].pct) day2ByState[s.state] = { pct: d2 };
+  }
 
-  const RJ1 = Math.max(
-    Number.isFinite(RJW1) ? RJW1 : -1,
-    Number.isFinite(RJE1) ? RJE1 : -1
-  );
-  const RJ2 = Math.max(
-    Number.isFinite(RJW2) ? RJW2 : -1,
-    Number.isFinite(RJE2) ? RJE2 : -1
-  );
+  // convert pct -> bucket (keep missing as No Forecast)
+  const day1BucketByState = {};
+  const day2BucketByState = {};
+  for (const st of statesInTable) {
+    const p1 = day1ByState[st]?.pct;
+    const p2 = day2ByState[st]?.pct;
+    day1BucketByState[st] = pctToBucket(Number.isFinite(p1) ? p1 : NaN);
+    day2BucketByState[st] = pctToBucket(Number.isFinite(p2) ? p2 : NaN);
+  }
 
-  day1ByState["Rajasthan"] = pctToBucket(RJ1 < 0 ? NaN : RJ1);
-  day2ByState["Rajasthan"] = pctToBucket(RJ2 < 0 ? NaN : RJ2);
+  // Load TopoJSON and draw maps
+  const topo = await d3.json(INDIA_TOPO_URL);
+  const objName = findIndiaObjectName(topo);
+  const features = topojson.feature(topo, topo.objects[objName]).features;
 
-  // Draw maps
-  const width = 860, height = 580;
-  const data = await d3.json(INDIA_TOPO_URL);
-  const features = topojson.feature(data, data.objects["states"]).features;
-  const projection = d3.geoMercator().scale(850).center([89.8, 21.5]).translate([430, 290]);
+  // Keep only the states we actually use (others get hatch)
+  drawBaseMap("#mapDay1", features, statesInTable);
+  drawBaseMap("#mapDay2", features, statesInTable);
 
-  const allowedStates = ["Punjab", "Rajasthan"];
-  drawBaseMap("#mapDay1", features, projection, allowedStates);
-  drawBaseMap("#mapDay2", features, projection, allowedStates);
-
-  colorStatesForDay("#mapDay1", day1ByState);
-  colorStatesForDay("#mapDay2", day2ByState);
+  colorStatesForDay("#mapDay1", day1BucketByState);
+  colorStatesForDay("#mapDay2", day2BucketByState);
 });
