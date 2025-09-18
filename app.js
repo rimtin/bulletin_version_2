@@ -1,11 +1,14 @@
 // === App logic for forecast ===
 
-// Centroids for each state (in pixels after projection)
+// Centroids for each state, computed when we draw the maps
 window.stateCentroids = {};
-// States used for the table (comes from data.js -> states)
+// We'll store the states used for the table (comes from data.js -> states)
 window.actualStateList = [];
 
-/* ------------------ EXISTING MAP DRAW (unchanged) ------------------ */
+/**
+ * Draw India map into a given SVG element.
+ * svgId: "#indiaMapDay1" or "#indiaMapDay2"
+ */
 function drawMap(svgId) {
   const svg = d3.select(svgId);
   svg.selectAll("*").remove();
@@ -29,7 +32,7 @@ function drawMap(svgId) {
 
   const path = d3.geoPath().projection(projection);
 
-  // Load India states TopoJSON (public)
+  // Load India states TopoJSON (stable public source)
   d3.json("https://raw.githubusercontent.com/udit-001/india-maps-data/refs/heads/main/topojson/india.json")
     .then(data => {
       const features = topojson.feature(data, data.objects["states"]).features;
@@ -62,14 +65,13 @@ function drawMap(svgId) {
         .on("mouseover", function () { d3.select(this).attr("stroke-width", 2.5); })
         .on("mouseout", function () { d3.select(this).attr("stroke-width", 1); });
 
-      // After both maps draw, build tables + sync
+      // After the second map is drawn, build tables and start hourly engine
       if (svgId === "#indiaMapDay2") {
         initializeForecastTable();
-        renderSubdivisionTable();    // chart-only subdivision table
-        addTableHoverSync();         // hover a row -> highlight map state
-        updateMapColors();           // initial fills from selects (we will auto-set them below)
-
-        // NEW: start hourly automation once DOM exists
+        renderSubdivisionTable();
+        addTableHoverSync();
+        updateMapColors();
+        updateMapIcons();
         initHourlyAutomation().catch(console.error);
       }
     })
@@ -81,11 +83,10 @@ function drawMap(svgId) {
 
 window.drawMap = drawMap;
 
-/** Build the Day1/Day2 forecast dropdown table (unchanged UI) */
+/** Build the Day1/Day2 forecast dropdown table */
 function initializeForecastTable() {
   const tbody = document.getElementById("forecast-table-body");
   if (!tbody) return;
-
   tbody.innerHTML = "";
 
   actualStateList.forEach((state, index) => {
@@ -109,11 +110,12 @@ function initializeForecastTable() {
   });
 }
 
-/** Sync table row hover with map: bold the state outline on both maps (unchanged) */
+/** Sync table row hover with map: bold the state outline on both maps */
 function addTableHoverSync() {
   const tbody = document.getElementById("forecast-table-body");
   if (!tbody) return;
 
+  // Clear previous listeners by cloning (safe reset)
   const newTbody = tbody.cloneNode(true);
   tbody.parentNode.replaceChild(newTbody, tbody);
 
@@ -126,13 +128,14 @@ function addTableHoverSync() {
       d3.selectAll(`[id='${state}']`).attr("stroke-width", 1);
     });
 
+    // keep onchange on selects after cloning
     tr.querySelectorAll("select").forEach(sel => {
       sel.addEventListener("change", updateMapColors);
     });
   });
 }
 
-/** Apply selected colors to states on Day 1 and Day 2 maps (unchanged) */
+/** Apply selected colors to states on Day 1 and Day 2 maps */
 function updateMapColors() {
   const rows = document.querySelectorAll("#forecast-table-body tr");
   rows.forEach(row => {
@@ -153,10 +156,11 @@ function updateMapColors() {
   updateMapIcons();
 }
 
-/** Emoji icons at state centroids for both days (unchanged) */
+/** Drop simple emoji icons at each state's centroid for both days */
 function updateMapIcons() {
   const iconSize = 18;
 
+  // Clear old icons
   d3.selectAll(".forecast-icon").remove();
 
   document.querySelectorAll("#forecast-table-body tr").forEach(row => {
@@ -194,13 +198,12 @@ function updateMapIcons() {
   });
 }
 
-/** Subdivision (chart) table (unchanged structure) */
+/** Render the Subdivision (chart) table */
 function renderSubdivisionTable() {
   const tbody = document.getElementById("subdivision-table-body");
   if (!tbody) return;
 
   tbody.innerHTML = "";
-
   let serial = 1;
   states.forEach(state => {
     const rows = (window.subdivisions || []).filter(s => s.state === state);
@@ -218,16 +221,20 @@ function renderSubdivisionTable() {
   });
 }
 
-/* ------------------ NEW: HOURLY AUTOMATION ------------------ */
+/* ===================== NEW: HOURLY AUTOMATION ===================== */
 
-// 1) Config for the three regions we care about (centroids in lat/lon)
+// 3 region centroids (approx). You can tweak later.
 const HOURLY_REGIONS = {
-  "Punjab|Punjab":            { lat: 31.0000, lon: 75.0000 },
-  "Rajasthan|W-Raj":          { lat: 26.9000, lon: 71.0000 }, // West Rajasthan approx
-  "Rajasthan|E-Raj":          { lat: 26.0000, lon: 75.6000 }  // East Rajasthan approx
+  "Punjab|Punjab":   { lat: 31.0000, lon: 75.0000 },
+  "Rajasthan|W-Raj": { lat: 26.9000, lon: 71.0000 },
+  "Rajasthan|E-Raj": { lat: 26.0000, lon: 75.6000 }
 };
 
-// % → bucket mapping
+const IST_TZ = "Asia/Kolkata";
+const MAX_HOURS = 48;
+const hourlyStore = {}; // key -> {times:[], values:[]}
+
+// % → bucket thresholds
 function pctToBucket(pct) {
   if (!Number.isFinite(pct)) return "Clear Sky";
   if (pct <= 10) return "Clear Sky";
@@ -237,17 +244,15 @@ function pctToBucket(pct) {
   return "Overcast Cloud Cover";
 }
 
-const IST_TZ = "Asia/Kolkata";
-const MAX_HOURS = 48;
-const hourlyStore = {}; // key -> { times:[], values:[] }
-
+// Fetch 48h hourly cloud_cover for a lat/lon
 async function fetchHourly(lat, lon) {
   const url = new URL("https://api.open-meteo.com/v1/forecast");
-  url.searchParams.set("latitude", lat.toFixed(4));
+  url.searchParams.set("latitude",  lat.toFixed(4));
   url.searchParams.set("longitude", lon.toFixed(4));
   url.searchParams.set("hourly", "cloud_cover");
   url.searchParams.set("timezone", IST_TZ);
   url.searchParams.set("forecast_days", "2");
+
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error("Open-Meteo error: " + res.status);
   const data = await res.json();
@@ -257,56 +262,39 @@ async function fetchHourly(lat, lon) {
   };
 }
 
+// Download for all 3 regions
 async function refreshAllHourly() {
-  const tasks = Object.entries(HOURLY_REGIONS).map(async ([key, {lat, lon}]) => {
+  const entries = Object.entries(HOURLY_REGIONS);
+  await Promise.allSettled(entries.map(async ([key, {lat, lon}]) => {
     try {
       const {times, values} = await fetchHourly(lat, lon);
       hourlyStore[key] = {times, values};
-    } catch (e) { console.warn("Hourly fetch failed:", key, e); }
-  });
-  await Promise.allSettled(tasks);
+    } catch (e) {
+      console.warn("Hourly fetch failed for", key, e);
+    }
+  }));
 }
 
 function getPct(key, hourIdx) {
-  const entry = hourlyStore[key];
-  if (!entry || !entry.values?.length) return NaN;
-  const i = Math.max(0, Math.min(entry.values.length - 1, hourIdx));
-  return entry.values[i];
+  const e = hourlyStore[key];
+  if (!e || !e.values?.length) return NaN;
+  const i = Math.max(0, Math.min(e.values.length - 1, hourIdx));
+  return e.values[i];
 }
 
-// Aggregate East + West into a single Rajasthan bucket for the state view
+// Aggregate Rajasthan = cloudier (max) of West/East
 function getRajasthanBucket(hourIdx) {
   const west = getPct("Rajasthan|W-Raj", hourIdx);
   const east = getPct("Rajasthan|E-Raj", hourIdx);
-  const worstPct = Math.max(
+  const worst = Math.max(
     Number.isFinite(west) ? west : -1,
     Number.isFinite(east) ? east : -1
   );
-  if (worstPct < 0) return "Clear Sky"; // fallback
-  return pctToBucket(worstPct);
+  if (worst < 0) return "Clear Sky"; // fallback
+  return pctToBucket(worst);
 }
 
-// Apply the chosen hour to the UI by **setting the selects** (keeps your UI the same)
-function applyHourToUI(hourIdx) {
-  const any = hourlyStore["Punjab|Punjab"] || hourlyStore["Rajasthan|W-Raj"] || hourlyStore["Rajasthan|E-Raj"];
-  const label = (any && any.times && any.times[hourIdx]) ? any.times[hourIdx] : `T+${hourIdx}h`;
-  const hourLabel = document.getElementById("hourLabel");
-  if (hourLabel) hourLabel.textContent = label + " IST";
-
-  // Punjab
-  const pbPct = getPct("Punjab|Punjab", hourIdx);
-  const pbBucket = pctToBucket(pbPct);
-  setStateRowSelects("Punjab", pbBucket);
-
-  // Rajasthan (aggregate W/E to a single state color)
-  const rjBucket = getRajasthanBucket(hourIdx);
-  setStateRowSelects("Rajasthan", rjBucket);
-
-  // Repaint maps/icons via your existing flow
-  updateMapColors();
-}
-
-// Helper: set both Day1 and Day2 selects for a given state
+// Set both Day1 & Day2 selects for a state
 function setStateRowSelects(stateName, bucket) {
   const row = [...document.querySelectorAll("#forecast-table-body tr")]
     .find(tr => (tr.children[1]?.textContent?.trim() === stateName));
@@ -317,12 +305,31 @@ function setStateRowSelects(stateName, bucket) {
   if (sel2) sel2.value = bucket;
 }
 
-// Wire up controls and auto-refresh
+// Apply chosen hour to UI
+function applyHourToUI(hourIdx) {
+  // label
+  const any = hourlyStore["Punjab|Punjab"] || hourlyStore["Rajasthan|W-Raj"] || hourlyStore["Rajasthan|E-Raj"];
+  const label = (any && any.times && any.times[hourIdx]) ? any.times[hourIdx] : `T+${hourIdx}h`;
+  const hourLabel = document.getElementById("hourLabel");
+  if (hourLabel) hourLabel.textContent = label + " IST";
+
+  // Punjab bucket
+  const pbPct    = getPct("Punjab|Punjab", hourIdx);
+  const pbBucket = pctToBucket(pbPct);
+  setStateRowSelects("Punjab", pbBucket);
+
+  // Rajasthan bucket (cloudier of W/E)
+  const rjBucket = getRajasthanBucket(hourIdx);
+  setStateRowSelects("Rajasthan", rjBucket);
+
+  // repaint via existing flow
+  updateMapColors();
+}
+
 async function initHourlyAutomation() {
   const hourInput = document.getElementById("hourSelect");
   const refreshBtn = document.getElementById("refreshNow");
 
-  // fetch once
   await refreshAllHourly();
 
   const setHour = (h) => {
@@ -339,17 +346,17 @@ async function initHourlyAutomation() {
     refreshBtn.disabled = false;
   });
 
-  // default to current hour index 0
+  // default to now
   setHour(0);
 
-  // optional: refresh every hour to keep live
+  // optional: hourly auto-refresh
   setInterval(async () => {
     await refreshAllHourly();
     setHour(hourInput?.value ?? 0);
   }, 60 * 60 * 1000);
 }
 
-/* ------------------ INIT ------------------ */
+/* ===================== INIT ===================== */
 window.onload = () => {
   if (typeof updateISTDate === "function") updateISTDate();
   drawMap("#indiaMapDay1");
