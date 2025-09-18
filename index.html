@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Home — Sub-Division User Base</title>
+  <title>Home — Sub-Division (Manual)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link href="style.css" rel="stylesheet">
   <script defer src="data.js"></script>
   <script defer>
     document.addEventListener("DOMContentLoaded", () => {
       updateISTDate("dateEl");
-      const tbody = document.querySelector("#subTable tbody");
+      const tbody = document.querySelector("#homeTable tbody");
       let i = 1;
       subdivisions.forEach(row => {
         const tr = document.createElement("tr");
@@ -17,6 +17,7 @@
           <td>${i++}</td>
           <td>${row.state}</td>
           <td>${row.name}</td>
+          <td contenteditable="true"></td>
           <td contenteditable="true"></td>
         `;
         tbody.appendChild(tr);
@@ -35,22 +36,23 @@
       </div>
     </div>
 
-    <h1>Sub-Division User Base</h1>
+    <h1>Sub-Division (Manual)</h1>
     <div id="dateEl" class="center-date"></div>
 
-    <table id="subTable" class="table">
+    <table id="homeTable" class="table">
       <thead>
         <tr>
           <th>S. No.</th>
           <th>State</th>
           <th>Sub Division</th>
-          <th>No. Solar Site</th>
+          <th>Day 1 (manual)</th>
+          <th>Day 2 (manual)</th>
         </tr>
       </thead>
       <tbody></tbody>
     </table>
 
-    <p class="note">Tip: You can type directly in the “No. Solar Site” column and print/share this page.</p>
+    <p class="note">Type directly in Day 1 / Day 2 cells to record your manual forecast.</p>
   </div>
 </body>
 </html>
