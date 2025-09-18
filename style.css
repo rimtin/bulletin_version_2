@@ -46,3 +46,13 @@ h1{ margin:14px 0 6px; font-size:22px; text-align:center; }
 
 /* --- Notes --- */
 .note{ margin:8px 0; color:#444; }
+
+.map-title { text-align:center; margin-top:16px; }
+.map-wrap { position:relative; margin:10px auto; max-width: 860px; }
+.map-wrap svg { width:100%; height:auto; border:1px solid #ccc; border-radius:10px; background:#fff; }
+.map-legend { position:absolute; top:10px; right:10px; background:#fff; border:1px solid #ccc; border-radius:8px; padding:8px 10px; font-size:12px; }
+.map-legend ul { list-style:none; margin:0; padding:0; }
+.map-legend li { display:flex; align-items:center; gap:6px; margin:4px 0; }
+.legend-s { width:16px; height:16px; border:1.4px solid #222; display:inline-block; border-radius:3px; }
+.legend-pattern { background-image: repeating-linear-gradient(45deg,#999 0,#999 1px,transparent 1px,transparent 4px); }
+
