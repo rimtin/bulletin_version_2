@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Daily — Sub-Division Forecast</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="style.css" rel="stylesheet">
+  <script defer src="data.js"></script>
+  <script defer>
+    document.addEventListener("DOMContentLoaded", () => {
+      updateISTDate("dateEl");
+      const tbody = document.querySelector("#dailyTable tbody");
+      let i = 1;
+      subdivisions.forEach(row => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${i++}</td>
+          <td>${row.state}</td>
+          <td>${row.name}</td>
+          <td>
+            <select>${forecastOptions.map(o=>`<option>${o}</option>`).join("")}</select>
+          </td>
+          <td>
+            <select>${forecastOptions.map(o=>`<option>${o}</option>`).join("")}</select>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    });
+  </script>
+</head>
+<body>
+  <div class="container">
+    <div class="navbar">
+      <div class="brand">Cloud Bulletin</div>
+      <div class="nav-btns">
+        <a href="index.html">home</a>
+        <a class="active" href="daily.html">daily</a>
+        <a href="hourly.html">hourly</a>
+      </div>
+    </div>
+
+    <h1>Daily Sub-Division Forecast</h1>
+    <div id="dateEl" class="center-date"></div>
+
+    <table id="dailyTable" class="table">
+      <thead>
+        <tr>
+          <th>S. No.</th>
+          <th>State</th>
+          <th>Sub Division</th>
+          <th>Day 1</th>
+          <th>Day 2</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</body>
+</html>
