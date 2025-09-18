@@ -1,4 +1,4 @@
-// === States shown in the main forecast (reduced to Punjab & Rajasthan) ===
+// === States shown in the main forecast (only Punjab & Rajasthan) ===
 const states = [
   "Punjab",
   "Rajasthan"
@@ -22,7 +22,7 @@ const forecastIcons = {
   "Overcast Cloud Cover": "🌫️"
 };
 
-// === Subdivision master list (only the requested three) ===
+// === Subdivision master list (only requested three) ===
 const subdivisions = [
   { subNo: 1, state: "Punjab",    name: "Punjab" },
   { subNo: 2, state: "Rajasthan", name: "W-Raj" }, // West Rajasthan
