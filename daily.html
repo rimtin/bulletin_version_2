@@ -2,32 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Daily — Sub-Division Forecast</title>
+  <title>Daily — Sub-Division (Automatic)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link href="style.css" rel="stylesheet">
+
+  <!-- libs for maps -->
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://unpkg.com/topojson-client@3"></script>
+
   <script defer src="data.js"></script>
-  <script defer>
-    document.addEventListener("DOMContentLoaded", () => {
-      updateISTDate("dateEl");
-      const tbody = document.querySelector("#dailyTable tbody");
-      let i = 1;
-      subdivisions.forEach(row => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td>${i++}</td>
-          <td>${row.state}</td>
-          <td>${row.name}</td>
-          <td>
-            <select>${forecastOptions.map(o=>`<option>${o}</option>`).join("")}</select>
-          </td>
-          <td>
-            <select>${forecastOptions.map(o=>`<option>${o}</option>`).join("")}</select>
-          </td>
-        `;
-        tbody.appendChild(tr);
-      });
-    });
-  </script>
+  <script defer src="daily.js"></script>
 </head>
 <body>
   <div class="container">
@@ -40,21 +24,59 @@
       </div>
     </div>
 
-    <h1>Daily Sub-Division Forecast</h1>
+    <h1>Daily Sub-Division Forecast (Auto)</h1>
     <div id="dateEl" class="center-date"></div>
 
+    <!-- Daily auto table -->
     <table id="dailyTable" class="table">
       <thead>
         <tr>
-          <th>S. No.</th>
-          <th>State</th>
-          <th>Sub Division</th>
-          <th>Day 1</th>
-          <th>Day 2</th>
+          <th rowspan="2">S. No.</th>
+          <th rowspan="2">State</th>
+          <th rowspan="2">Sub Division</th>
+          <th colspan="2">Day 1 (Today)</th>
+          <th colspan="2">Day 2 (Tomorrow)</th>
+        </tr>
+        <tr>
+          <th>Bucket</th><th>%</th>
+          <th>Bucket</th><th>%</th>
         </tr>
       </thead>
       <tbody></tbody>
     </table>
+
+    <!-- Day 1 Map -->
+    <h2 class="map-title">Day 1 Forecast Map</h2>
+    <div class="map-wrap">
+      <svg id="mapDay1" viewBox="0 0 860 580" aria-label="Day 1 India Map"></svg>
+      <div class="map-legend">
+        <ul>
+          <li><span class="legend-s swatch-clear"></span> Clear</li>
+          <li><span class="legend-s swatch-low"></span> Low</li>
+          <li><span class="legend-s swatch-medium"></span> Medium</li>
+          <li><span class="legend-s swatch-high"></span> High</li>
+          <li><span class="legend-s swatch-overcast"></span> Overcast</li>
+          <li><span class="legend-s legend-pattern"></span> No Forecast</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Day 2 Map -->
+    <h2 class="map-title">Day 2 Forecast Map</h2>
+    <div class="map-wrap">
+      <svg id="mapDay2" viewBox="0 0 860 580" aria-label="Day 2 India Map"></svg>
+      <div class="map-legend">
+        <ul>
+          <li><span class="legend-s swatch-clear"></span> Clear</li>
+          <li><span class="legend-s swatch-low"></span> Low</li>
+          <li><span class="legend-s swatch-medium"></span> Medium</li>
+          <li><span class="legend-s swatch-high"></span> High</li>
+          <li><span class="legend-s swatch-overcast"></span> Overcast</li>
+          <li><span class="legend-s legend-pattern"></span> No Forecast</li>
+        </ul>
+      </div>
+    </div>
+
   </div>
 </body>
 </html>
