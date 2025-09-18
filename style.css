@@ -14,14 +14,14 @@ body {
 
 /* Navbar buttons */
 .nav-btn {
-  @apply px-4 py-1 rounded-lg font-semibold;
   background: #fff;
   color: #111;
   border: 1px solid #ddd;
+  padding: .5rem 1rem;
+  border-radius: .75rem;
+  font-weight: 600;
 }
-.nav-btn:hover {
-  background: #eee;
-}
+.nav-btn:hover { background: #eee; }
 .nav-btn.active {
   background: #2563eb;
   color: #fff;
@@ -29,27 +29,13 @@ body {
 }
 
 /* Tables */
-table {
-  border-collapse: collapse;
-  width: 100%;
-}
-th, td {
-  border: 1px solid rgba(255,255,255,0.3);
-  padding: 8px;
-}
-thead {
-  background: rgba(255, 255, 255, 0.2);
-  font-weight: 600;
-}
-tbody tr:nth-child(even) {
-  background: rgba(255, 255, 255, 0.1);
-}
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid rgba(0,0,0,0.06); padding: 8px; color:#111827; } /* darker text */
+thead { background: rgba(0, 0, 0, 0.04); font-weight: 600; }
+tbody tr:nth-child(even) { background: rgba(0, 0, 0, 0.02); }
 
 /* Notes textarea */
-textarea {
-  resize: vertical;
-  min-height: 120px;
-}
+textarea { resize: vertical; min-height: 120px; }
 
 /* Cloud classification swatches */
 .swatch-clear    { background:#A7D8EB !important; }
@@ -57,3 +43,17 @@ textarea {
 .swatch-medium   { background:#FFF952 !important; color:#000; }
 .swatch-high     { background:#E69536 !important; }
 .swatch-overcast { background:#FF4D4D !important; color:#fff; }
+
+/* Small clean chevron for selects */
+.select-clean{
+  appearance:none; -webkit-appearance:none; -moz-appearance:none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='14' height='14' fill='none' stroke='%23111827' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat:no-repeat;
+  background-position:right .6rem center;
+  background-size:14px 14px;
+  padding-right:2rem;
+  border:1px solid #e5e7eb;
+  border-radius:10px;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.04);
+  color:#111827;
+}
