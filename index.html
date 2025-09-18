@@ -23,7 +23,7 @@
         <h1 class="center-title">Cloud Coverage Forecast Bulletin</h1>
         <h2 id="forecast-date" class="center-date"></h2>
 
-        <!-- NEW: Hourly control (kept very small) -->
+        <!-- NEW: Hourly control (compact, centered) -->
         <div class="hour-controls">
           <label for="hourSelect"><strong>Hourly (IST):</strong></label>
           <input id="hourSelect" type="range" min="0" max="47" value="0" step="1" />
@@ -58,7 +58,7 @@
           </table>
         </div>
 
-        <!-- Forecast Dropdown Table (unchanged UI; now auto-filled hourly) -->
+        <!-- Forecast Dropdown Table -->
         <h3 class="table-title" style="text-align:left;">Forecast</h3>
         <table class="forecast-table">
           <thead>
@@ -72,7 +72,7 @@
           <tbody id="forecast-table-body"></tbody>
         </table>
 
-        <!-- Subdivision Table (kept the same visual; we won’t alter its structure) -->
+        <!-- Subdivision Table (chart-only) -->
         <h3 class="table-title" style="text-align:left;">Sub Divisions</h3>
         <table class="forecast-table subdivision-table">
           <thead>
@@ -90,9 +90,11 @@
 
       <!-- Page 2: Forecast Maps -->
       <div class="page page-2">
+        <!-- Day 1 Map -->
         <h3 class="map-label">Day 1 Forecast Map</h3>
         <div class="map-wrapper">
           <svg id="indiaMapDay1"></svg>
+          <!-- Legend -->
           <div class="map-legend">
             <ul>
               <li><span class="legend-swatch swatch-clear"></span> Clear Sky</li>
@@ -105,6 +107,7 @@
           </div>
         </div>
 
+        <!-- Day 2 Map -->
         <h3 class="map-label">Day 2 Forecast Map</h3>
         <div class="map-wrapper">
           <svg id="indiaMapDay2"></svg>
