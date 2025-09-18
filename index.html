@@ -1,269 +1,109 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
+  <title>Cloud Coverage Forecast Bulletin</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CloudCast — Home</title>
-
-  <!-- Tailwind -->
-  <script src="https://cdn.tailwindcss.com"></script>
-
-  <!-- Nunito + small helpers -->
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700;800&display=swap');
-    body { font-family: 'Nunito', sans-serif; }
-    .shadow-soft { box-shadow: 0 10px 25px -5px rgba(0,0,0,.10), 0 10px 10px -5px rgba(0,0,0,.04); }
-    .gradient-text {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
-    }
-    /* pill menu active gradient */
-    .pill-active {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: #fff !important;
-    }
-  </style>
+  <link rel="stylesheet" href="style.css" />
+  <!-- D3 + TopoJSON -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
 </head>
-<body class="bg-gray-50 min-h-screen">
+<body>
+  <div class="container">
 
-  <!-- Top bar -->
-  <header class="w-full">
-    <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-      <div class="text-lg md:text-xl font-extrabold tracking-wide gradient-text">Cloud Bulletin</div>
-
-      <!-- pill menu -->
-      <nav aria-label="Primary" class="bg-white shadow-soft rounded-full p-1 flex items-center gap-1">
-        <a href="index.html"
-           data-route="index.html"
-           class="px-4 py-2 rounded-full text-sm font-semibold text-gray-700 hover:bg-gray-100">home</a>
-        <a href="daily.html"
-           data-route="daily.html"
-           class="px-4 py-2 rounded-full text-sm font-semibold text-gray-700 hover:bg-gray-100">daily</a>
-        <a href="hourly.html"
-           data-route="hourly.html"
-           class="px-4 py-2 rounded-full text-sm font-semibold text-gray-700 hover:bg-gray-100">hourly</a>
+    <!-- NEW: pill navbar -->
+    <div class="navbar">
+      <div class="brand">Cloud Bulletin</div>
+      <nav class="nav-btns" aria-label="Primary">
+        <a href="index.html">home</a>
+        <a href="daily.html">daily</a>
+        <a href="hourly.html">hourly</a>
       </nav>
     </div>
-  </header>
 
-  <!-- “Sample data” chip (optional) -->
-  <div class="fixed top-5 left-5 z-50 bg-gradient-to-r from-indigo-400 to-purple-500 text-white text-xs font-semibold px-4 py-2 rounded-full shadow-soft">
-    ☁️ SAMPLE DATA
+    <!-- Page 1 -->
+    <section id="page1" class="print-page">
+      <header class="header">
+        <div class="title-wrap">
+          <h1>Cloud Coverage Forecast Bulletin</h1>
+          <div class="subhead">Forecast Date: <span id="forecast-date">—</span></div>
+        </div>
+        <div class="actions">
+          <button class="btn screen-only" onclick="window.print()">Download PDF</button>
+        </div>
+      </header>
+
+      <!-- Colored cloud classification table -->
+      <div class="card">
+        <h3>Cloud Cover Classification</h3>
+        <div class="table-wrap">
+          <table class="cloud-table" id="cloudTable">
+            <thead>
+              <tr>
+                <th style="width:72px">S. No.</th>
+                <th style="width:170px">Sky Covered by clouds</th>
+                <th style="width:240px">Cloud Cover</th>
+                <th>Cloud Type</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="cloud-note"><strong>Note:</strong> <em>This terminology is for local use only.</em></p>
+      </div>
+
+      <!-- Sub-division forecast table -->
+      <div class="card">
+        <h3>Sub-Division Forecast (Day 1 & Day 2)</h3>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width:72px">S. No.</th>
+                <th style="width:240px">State</th>
+                <th>Sub Division</th>
+                <th style="width:260px">Day 1</th>
+                <th style="width:260px">Day 2</th>
+              </tr>
+            </thead>
+            <tbody id="forecast-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- PRINT-ONLY Notes directly under table -->
+      <div id="notes-print-card" class="card print-only">
+        <h3>Dialog / Notes</h3>
+        <textarea id="notes-print" class="notes-box" readonly></textarea>
+      </div>
+    </section>
+
+    <!-- Page 2 -->
+    <section id="page2" class="print-page">
+      <div class="map-card page-break-avoid">
+        <h4>Map 1 – Projection of Division Weather Forecast (Day 1)</h4>
+        <svg id="indiaMapDay1" viewBox="0 0 860 580" width="100%" height="420"></svg>
+      </div>
+
+      <div class="map-card page-break-avoid">
+        <h4>Map 2 – Projection of Division Weather Forecast (Day 2)</h4>
+        <svg id="indiaMapDay2" viewBox="0 0 860 580" width="100%" height="420"></svg>
+      </div>
+    </section>
+
+    <!-- Page 3 (screen notes; hidden in PDF) -->
+    <section id="page3" class="print-page">
+      <div class="card">
+        <h3>Dialog / Notes</h3>
+        <textarea id="notes" placeholder="Add your notes here..." class="notes-box"></textarea>
+      </div>
+    </section>
+
   </div>
 
-  <!-- Page content -->
-  <main class="container mx-auto px-4 py-8">
-    <!-- Header -->
-    <div class="text-center mb-12">
-      <h1 class="text-5xl font-extrabold gradient-text mb-4">CloudCast</h1>
-      <p class="text-gray-600 text-lg mb-8">Beautiful weather, beautifully presented</p>
-
-      <!-- Search Bar -->
-      <div class="max-w-md mx-auto">
-        <div class="relative">
-          <input id="citySearch" type="text" placeholder="Search any city..."
-                 class="w-full px-6 py-4 pl-12 rounded-2xl bg-white shadow-soft border-0 focus:outline-none focus:ring-2 focus:ring-purple-400 text-gray-700">
-          <svg class="absolute left-4 top-4 h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-          </svg>
-        </div>
-      </div>
-    </div>
-
-    <!-- Main Weather Section -->
-    <div class="max-w-6xl mx-auto">
-      <!-- Current Weather Hero -->
-      <div class="bg-white rounded-3xl shadow-soft p-8 mb-8">
-        <div class="flex flex-col lg:flex-row items-center justify-between">
-          <div class="text-center lg:text-left mb-6 lg:mb-0">
-            <h2 class="text-3xl font-bold text-gray-800 mb-2" id="locationName">Boston, Massachusetts</h2>
-            <p class="text-gray-500 text-lg mb-4" id="currentDateTime">Monday, December 10 • 2:30 PM</p>
-            <div class="flex items-center justify-center lg:justify-start space-x-4">
-              <div class="text-7xl">🌤️</div>
-              <div>
-                <div class="text-6xl font-light text-gray-800" id="currentTemp">68°</div>
-                <p class="text-gray-600 text-lg" id="weatherDesc">Partly Cloudy</p>
-              </div>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-2 gap-6">
-            <div class="text-center">
-              <div class="text-sm text-gray-500 mb-1">High</div>
-              <div class="text-2xl font-semibold text-gray-800" id="highTemp">72°</div>
-            </div>
-            <div class="text-center">
-              <div class="text-sm text-gray-500 mb-1">Low</div>
-              <div class="text-2xl font-semibold text-gray-800" id="lowTemp">58°</div>
-            </div>
-            <div class="text-center">
-              <div class="text-sm text-gray-500 mb-1">Feels Like</div>
-              <div class="text-2xl font-semibold text-gray-800" id="feelsTemp">71°</div>
-            </div>
-            <div class="text-center">
-              <div class="text-sm text-gray-500 mb-1">Chance of Rain</div>
-              <div class="text-2xl font-semibold text-blue-600" id="rainChance">20%</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Details -->
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div class="bg-white rounded-2xl shadow-soft p-6">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="font-semibold text-gray-700">Wind</h3><span class="text-2xl">💨</span>
-          </div>
-          <div class="text-2xl font-bold text-gray-800" id="windSpeed">8 mph</div>
-          <div class="text-sm text-gray-500" id="windDirection">Northeast</div>
-        </div>
-
-        <div class="bg-white rounded-2xl shadow-soft p-6">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="font-semibold text-gray-700">Humidity</h3><span class="text-2xl">💧</span>
-          </div>
-          <div class="text-2xl font-bold text-gray-800" id="humidity">65%</div>
-          <div class="text-sm text-gray-500">Comfortable</div>
-        </div>
-
-        <div class="bg-white rounded-2xl shadow-soft p-6">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="font-semibold text-gray-700">UV Index</h3><span class="text-2xl">☀️</span>
-          </div>
-          <div class="text-2xl font-bold text-gray-800" id="uvIndex">6</div>
-          <div class="text-sm text-orange-500">Moderate</div>
-        </div>
-
-        <div class="bg-white rounded-2xl shadow-soft p-6">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="font-semibold text-gray-700">Air Quality</h3><span class="text-2xl">🍃</span>
-          </div>
-          <div class="text-2xl font-bold text-gray-800" id="airQuality">Good</div>
-          <div class="text-sm text-green-500">AQI 45</div>
-        </div>
-      </div>
-
-      <!-- Sun & Moon -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <div class="bg-white rounded-2xl shadow-soft p-6">
-          <h3 class="font-semibold text-gray-700 mb-4 flex items-center">
-            <span class="text-2xl mr-2">🌅</span> Sunrise & Sunset
-          </h3>
-          <div class="flex justify-between">
-            <div><div class="text-sm text-gray-500">Sunrise</div>
-              <div class="text-xl font-semibold text-gray-800" id="sunrise">6:42 AM</div></div>
-            <div><div class="text-sm text-gray-500">Sunset</div>
-              <div class="text-xl font-semibold text-gray-800" id="sunset">7:18 PM</div></div>
-          </div>
-        </div>
-
-        <div class="bg-white rounded-2xl shadow-soft p-6">
-          <h3 class="font-semibold text-gray-700 mb-4 flex items-center">
-            <span class="text-2xl mr-2">🌡️</span> Pressure & Visibility
-          </h3>
-          <div class="flex justify-between">
-            <div><div class="text-sm text-gray-500">Pressure</div>
-              <div class="text-xl font-semibold text-gray-800" id="pressure">30.15 in</div></div>
-            <div><div class="text-sm text-gray-500">Visibility</div>
-              <div class="text-xl font-semibold text-gray-800" id="visibility">10 mi</div></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 5-Day Forecast -->
-      <div class="bg-white rounded-3xl shadow-soft p-8">
-        <h3 class="text-2xl font-bold text-gray-800 mb-6">5-Day Forecast</h3>
-        <div class="space-y-4" id="forecastContainer"></div>
-      </div>
-    </div>
-  </main>
-
-  <!-- Minimal demo JS (same logic you shared) -->
-  <script>
-    // sample data
-    const cityWeatherData = {
-      boston: {name:'Boston, Massachusetts',temp:68,high:72,low:58,feels:71,condition:'Partly Cloudy',icon:'🌤️',wind:'8 mph',windDir:'Northeast',humidity:'65%',uv:6,airQuality:'Good',rain:'20%',sunrise:'6:42 AM',sunset:'7:18 PM'},
-      austin: {name:'Austin, Texas',temp:89,high:92,low:74,feels:95,condition:'Hot & Sunny',icon:'☀️',wind:'12 mph',windDir:'South',humidity:'45%',uv:9,airQuality:'Moderate',rain:'5%',sunrise:'7:15 AM',sunset:'8:02 PM'},
-      portland:{name:'Portland, Oregon',temp:62,high:65,low:52,feels:60,condition:'Light Rain',icon:'🌦️',wind:'6 mph',windDir:'West',humidity:'82%',uv:3,airQuality:'Good',rain:'75%',sunrise:'7:28 AM',sunset:'6:45 PM'},
-      atlanta:{name:'Atlanta, Georgia',temp:76,high:79,low:63,feels:78,condition:'Partly Sunny',icon:'⛅',wind:'10 mph',windDir:'Southeast',humidity:'58%',uv:7,airQuality:'Good',rain:'30%',sunrise:'7:05 AM',sunset:'7:35 PM'},
-      vegas:{name:'Las Vegas, Nevada',temp:98,high:102,low:81,feels:105,condition:'Very Hot',icon:'🔥',wind:'4 mph',windDir:'East',humidity:'18%',uv:11,airQuality:'Moderate',rain:'0%',sunrise:'6:58 AM',sunset:'7:52 PM'}
-    };
-    const forecastData = [
-      { day:'Today', icon:'🌤️', high:72, low:58, condition:'Partly Cloudy', rain:20 },
-      { day:'Tuesday', icon:'☀️', high:75, low:61, condition:'Sunny', rain:5 },
-      { day:'Wednesday', icon:'🌧️', high:69, low:56, condition:'Rainy', rain:80 },
-      { day:'Thursday', icon:'⛈️', high:66, low:54, condition:'Thunderstorms', rain:90 },
-      { day:'Friday', icon:'⛅', high:71, low:59, condition:'Partly Cloudy', rain:25 }
-    ];
-
-    function updateWeatherDisplay(d){
-      document.getElementById('locationName').textContent = d.name;
-      document.getElementById('currentTemp').textContent = d.temp + '°';
-      document.getElementById('highTemp').textContent = d.high + '°';
-      document.getElementById('lowTemp').textContent = d.low + '°';
-      document.getElementById('feelsTemp').textContent = d.feels + '°';
-      document.getElementById('weatherDesc').textContent = d.condition;
-      document.getElementById('rainChance').textContent = d.rain;
-      document.getElementById('windSpeed').textContent = d.wind;
-      document.getElementById('windDirection').textContent = d.windDir;
-      document.getElementById('humidity').textContent = d.humidity;
-      document.getElementById('uvIndex').textContent = d.uv;
-      document.getElementById('airQuality').textContent = d.airQuality;
-      document.getElementById('sunrise').textContent = d.sunrise;
-      document.getElementById('sunset').textContent = d.sunset;
-      document.querySelector('.text-7xl').textContent = d.icon;
-    }
-
-    function populateForecast(){
-      const c = document.getElementById('forecastContainer');
-      c.innerHTML = '';
-      forecastData.forEach(day => {
-        const el = document.createElement('div');
-        el.className = 'flex items-center justify-between py-4 border-b border-gray-100 last:border-b-0';
-        el.innerHTML = `
-          <div class="flex items-center space-x-4 flex-1">
-            <div class="w-20 font-medium text-gray-700">${day.day}</div>
-            <div class="text-3xl">${day.icon}</div>
-            <div class="flex-1">
-              <div class="font-medium text-gray-800">${day.condition}</div>
-              <div class="text-sm text-blue-600">${day.rain}% chance of rain</div>
-            </div>
-          </div>
-          <div class="flex items-center space-x-4 text-right">
-            <div class="text-xl font-semibold text-gray-800">${day.high}°</div>
-            <div class="text-xl text-gray-500">${day.low}°</div>
-          </div>`;
-        c.appendChild(el);
-      });
-    }
-
-    document.getElementById('citySearch').addEventListener('keypress', e => {
-      if (e.key === 'Enter'){
-        const city = e.target.value.toLowerCase().trim();
-        if (cityWeatherData[city]) { updateWeatherDisplay(cityWeatherData[city]); e.target.value=''; }
-        else alert('City not found in sample data. Try: Boston, Austin, Portland, Atlanta, or Vegas');
-      }
-    });
-
-    function updateDateTime(){
-      const now = new Date();
-      const opts = { weekday:'long', month:'long', day:'numeric', hour:'numeric', minute:'2-digit', hour12:true };
-      document.getElementById('currentDateTime').textContent = now.toLocaleDateString('en-US', opts);
-    }
-
-    // pill active state
-    (function setActive(){
-      const path = location.pathname.split('/').pop() || 'index.html';
-      document.querySelectorAll('nav [data-route]').forEach(a => {
-        if (a.getAttribute('data-route') === path) a.classList.add('pill-active');
-      });
-    })();
-
-    // boot
-    populateForecast();
-    updateDateTime();
-    setInterval(updateDateTime, 60000);
-  </script>
+  <!-- Data first, then app -->
+  <script src="data.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
