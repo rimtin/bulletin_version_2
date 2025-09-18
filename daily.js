@@ -1,4 +1,4 @@
-// === Map + table app (with legend + satellite button) ===
+// === Map + table app (legend + satellite + hourly Day1/Day2) ===
 const W = 860, H = 580, PAD = 18;
 const MATCH_KEY = "ST_NM";
 let STATE_KEY = "ST_NM";
@@ -22,7 +22,7 @@ const CENTROIDS = {
   "East Rajasthan":   { lat: 26.9, lon: 75.8 }
 };
 
-// map % → label bucket
+// % → bucket (tweak thresholds if you like)
 function bucketFromPct(pct){
   if (pct < 10) return "Clear Sky";
   if (pct < 30) return "Low Cloud Cover";
@@ -37,15 +37,24 @@ const BUCKET_RANK = {
   "High Cloud Cover": 3, "Overcast Cloud Cover": 4
 };
 
-// fetch daily means (today + tomorrow) for a point and bucket them
-async function fetchDailyCloudBuckets(lat, lon){
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=cloud_cover_mean&forecast_days=3&timezone=Asia%2FKolkata`;
+/* --------- FIX: use HOURLY cloud from NOW for Day1/Day2 --------- */
+// Fetch 48h of hourly total cloud cover; bucket Day1/Day2 from NOW (IST)
+async function fetchHourlyCloudBuckets(lat, lon){
+  const url = `https://api.open-meteo.com/v1/forecast`+
+              `?latitude=${lat}&longitude=${lon}`+
+              `&hourly=cloud_cover&forecast_hours=48&timezone=Asia%2FKolkata`;
   const r = await fetch(url, { cache: "no-store" });
   if (!r.ok) throw new Error("Open-Meteo error");
   const j = await r.json();
-  const arr = j?.daily?.cloud_cover_mean || [];
-  const d1 = bucketFromPct(arr[0] ?? 0);  // Day 1 (today)
-  const d2 = bucketFromPct(arr[1] ?? 0);  // Day 2 (tomorrow)
+
+  const arr = j?.hourly?.cloud_cover || [];
+  // Day 1: next 24h, Day 2: hours 25–48
+  const a1 = arr.slice(0, 24);
+  const a2 = arr.slice(24, 48);
+
+  const mean = a => a.length ? a.reduce((s,x)=>s+(x??0),0)/a.length : 0;
+  const d1 = bucketFromPct(mean(a1));
+  const d2 = bucketFromPct(mean(a2));
   return { d1, d2 };
 }
 
@@ -63,7 +72,8 @@ async function autoFillDailyFromOpenMeteo(){
   await Promise.all(unique.map(async name => {
     try{
       const { lat, lon } = CENTROIDS[name];
-      results[name] = await fetchDailyCloudBuckets(lat, lon);
+      // HOURLY from now → Day1/Day2
+      results[name] = await fetchHourlyCloudBuckets(lat, lon);
     }catch(e){ console.warn("Open-Meteo failed for", name, e); }
   }));
 
@@ -361,7 +371,7 @@ function buildFixedTable(){
       const s2 = document.createElement("select");
       [s1, s2].forEach(sel=>{
         sel.className = "select-clean w-full";
-        (window.forecastOptions || []).forEach(opt=>{
+        (options || []).forEach(opt=>{
           const o = document.createElement("option");
           o.value = opt; o.textContent = opt; sel.appendChild(o);
         });
