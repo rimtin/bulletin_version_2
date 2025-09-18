@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Hourly — Sub-Division Forecast</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="style.css" rel="stylesheet">
+  <script defer src="data.js"></script>
+  <script defer src="hourly.js"></script>
+</head>
+<body>
+  <div class="container">
+    <div class="navbar">
+      <div class="brand">Cloud Bulletin</div>
+      <div class="nav-btns">
+        <a href="index.html">home</a>
+        <a href="daily.html">daily</a>
+        <a class="active" href="hourly.html">hourly</a>
+      </div>
+    </div>
+
+    <h1>Hourly Sub-Division Forecast</h1>
+    <div id="dateEl" class="center-date"></div>
+
+    <div class="hour-controls">
+      <label for="hourSelect"><strong>Hourly (IST):</strong></label>
+      <input id="hourSelect" type="range" min="0" max="47" value="0" step="1">
+      <span id="hourLabel">—</span>
+      <button id="refreshNow" type="button">Refresh</button>
+    </div>
+
+    <table id="hourlyTable" class="table">
+      <thead>
+        <tr>
+          <th>S. No.</th>
+          <th>State</th>
+          <th>Sub Division</th>
+          <th>Hourly (IST)</th>
+          <th>% Cloud</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <p class="note">Rajasthan (state) is treated as the cloudier of West/East when you later aggregate at state level.</p>
+  </div>
+</body>
+</html>
