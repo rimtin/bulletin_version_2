@@ -1,59 +1,247 @@
-/* ========= Cloud Bulletin Shared Styles ========= */
-
-/* Font */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-body {
-  font-family: 'Inter', sans-serif;
+:root{
+  --bg:#f6f7f9;
+  --card-bg:#fff;
+  --accent:#2563eb;
 }
 
-/* Glass utility (for cards/nav) */
-.glass {
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(10px);
+/* ===== NEW: pill navbar ===== */
+.navbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin:8px 0 18px;
+}
+.brand{
+  font-weight:900;
+  letter-spacing:.2px;
+  color:#000;
+}
+.nav-btns{
+  background:#fff;
+  border-radius:9999px;
+  padding:4px;
+  box-shadow:0 10px 25px -5px rgba(0,0,0,.10), 0 10px 10px -5px rgba(0,0,0,.04);
+}
+.nav-btns a{
+  display:inline-block;
+  padding:8px 14px;
+  border-radius:9999px;
+  font-weight:700;
+  font-size:13px;
+  color:#374151;
+  text-decoration:none;
+}
+.nav-btns a:hover{ background:#f3f4f6; }
+.nav-btns a.active{
+  color:#fff;
+  background:linear-gradient(135deg,#667eea 0%, #764ba2 100%);
+  box-shadow:0 6px 14px rgba(102,126,234,.35);
 }
 
-/* Navbar buttons */
-.nav-btn {
-  background: #fff;
-  color: #111;
-  border: 1px solid #ddd;
-  padding: .5rem 1rem;
-  border-radius: .75rem;
-  font-weight: 600;
+/* ---------- Base layout ---------- */
+*{ box-sizing:border-box; }
+html,body{
+  margin:0; padding:0;
+  background:var(--bg); color:#000;
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Ubuntu,Arial,sans-serif;
 }
-.nav-btn:hover { background: #eee; }
-.nav-btn.active {
-  background: #2563eb;
-  color: #fff;
-  border-color: #2563eb;
+.container{ max-width:1100px; margin:24px auto; padding:0 16px; }
+
+/* --- Header: centered title, button on right (desktop) --- */
+.header{
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 14px;
+  padding-right: 140px; /* reserve space so button doesn’t overlap title */
+}
+.header .title-wrap{ flex:1 1 auto; text-align:center; }
+.header .actions{ position:absolute; right:0; bottom:0; }
+
+h1{
+  margin:0 0 6px;
+  font-weight:900;
+  letter-spacing:.2px;
+  text-align:center;
+  font-size:clamp(28px,3.6vw,40px);
+  color:#000;
+}
+.subhead{
+  text-align:center;
+  margin-top:2px;
+  font-size:clamp(13px,1.6vw,16px);
+  color:#000;
+}
+.btn{ background:var(--accent); color:#fff; border:0; padding:10px 14px; border-radius:10px; font-weight:600; cursor:pointer; }
+.btn:hover{ filter:brightness(1.05); }
+
+.card{ background:var(--card-bg); border:1px solid #e6e6e6; border-radius:14px; padding:14px; margin:12px 0 18px; }
+.card h3{
+  margin:4px 0 12px;
+  font-size:clamp(18px,2.4vw,22px);
+  font-weight:800;
+  color:#000;
+  text-align:center;
 }
 
-/* Tables */
-table { border-collapse: collapse; width: 100%; }
-th, td { border: 1px solid rgba(0,0,0,0.06); padding: 8px; color:#111827; } /* darker text */
-thead { background: rgba(0, 0, 0, 0.04); font-weight: 600; }
-tbody tr:nth-child(even) { background: rgba(0, 0, 0, 0.02); }
+/* ---------- Tables: heavy, gapless, centered ---------- */
+.table-wrap{ overflow:auto; border-radius:12px; }
+table{ width:100%; border-collapse:separate; border-spacing:0; table-layout:fixed; }
 
-/* Notes textarea */
-textarea { resize: vertical; min-height: 120px; }
+.data-table, .cloud-table{
+  border:0;
+  outline:4px solid #000;
+  border-radius:12px;
+  overflow:hidden;
+}
 
-/* Cloud classification swatches */
-.swatch-clear    { background:#A7D8EB !important; }
-.swatch-low      { background:#C4E17F !important; }
-.swatch-medium   { background:#FFF952 !important; color:#000; }
-.swatch-high     { background:#E69536 !important; }
-.swatch-overcast { background:#FF4D4D !important; color:#fff; }
+.data-table th, .data-table td,
+.cloud-table th, .cloud-table td{
+  border:0;
+  padding:10px 12px;
+  font-size:14px;
+  color:#000;
+  text-align:center;
+  vertical-align:middle;
+  background-clip:padding-box;
+}
 
-/* Small clean chevron for selects */
-.select-clean{
-  appearance:none; -webkit-appearance:none; -moz-appearance:none;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='14' height='14' fill='none' stroke='%23111827' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
-  background-repeat:no-repeat;
-  background-position:right .6rem center;
-  background-size:14px 14px;
-  padding-right:2rem;
-  border:1px solid #e5e7eb;
+/* header band */
+.data-table thead th, .cloud-table thead th{
+  background:#bfe6ff;
+  font-weight:800;
+}
+
+/* inner grid (gap-proof with rowspans) */
+.data-table tr>*,
+.cloud-table tr>*{ border-right:3px solid #000; border-bottom:3px solid #000; }
+
+/* keep the right-most vertical line visible */
+.data-table tr>*:last-child,
+.cloud-table tr>*:last-child{ border-right:3px solid #000 !important; }
+
+.data-table thead tr>*,
+.cloud-table thead tr>*{ border-top:3px solid #000; }
+
+.data-table tbody tr:first-child>*,
+.cloud-table tbody tr:first-child>*{ border-top:0; }
+
+.data-table tr>*:first-child,
+.cloud-table tr>*:first-child{ border-left:3px solid #000; }
+
+/* keep long labels intact */
+.data-table td[data-col="state"],
+.data-table td[data-col="subdiv"]{ white-space:nowrap; }
+
+/* selects: centered; JS paints background by selected value */
+.data-table select{
+  width:100%;
+  min-width:230px;
+  padding:8px 10px;
+  border:3px solid #000;
+  border-radius:12px;
+  background:#fff; color:#000;
+  font-size:14px; font-weight:700;
+  text-align:center; text-align-last:center;
+}
+
+/* classification table note */
+.cloud-note{ margin:8px 0 0; font-size:12px; color:#000; }
+
+/* ---------- Map cards ---------- */
+.map-card{ padding:10px; border-radius:12px; background:#fff; border:1px solid #e6e6e6; margin:12px 0 18px; }
+.map-card h4{ margin:6px 0 10px; font-weight:700; font-size:15px; color:#000; }
+
+/* ---------- Notes / dialog ---------- */
+.notes-box{
+  width:100%;
+  min-height:220px;
+  resize:both;
+  overflow:auto;
+  border:3px solid #000;
   border-radius:10px;
-  box-shadow: inset 0 0 0 1px rgba(0,0,0,.04);
-  color:#111827;
+  padding:10px;
+  font-size:14px;
+  color:#000;
+  max-width:none;
+  -webkit-overflow-scrolling:touch;
 }
+
+/* ---------- Hover tooltip ---------- */
+.map-tooltip{
+  position:fixed; z-index:9999; pointer-events:none;
+  background:#fff; color:#000;
+  border-radius:12px; padding:8px 10px;
+  box-shadow:0 10px 20px rgba(0,0,0,.18), 0 2px 6px rgba(0,0,0,.12);
+  border:1px solid rgba(0,0,0,.18);
+  font-size:13px; font-weight:700; line-height:1.2;
+  max-width:220px; white-space:nowrap;
+}
+
+/* ---------- Map legend + icons ---------- */
+.map-legend text{ font-size:12px; fill:#000; }
+.icon-layer text{
+  paint-order:stroke; stroke:#fff; stroke-width:2px;
+  font-family:"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif;
+  fill:#000;
+}
+.icon-layer circle{ vector-effect:non-scaling-stroke; }
+
+/* ---------- Responsive ---------- */
+@media (max-width:900px){
+  .container{ padding:0 12px; }
+  .map-card svg{ height:58vw; min-height:300px; }
+  .table-wrap{ overflow-x:auto; }
+  table{ min-width:820px; }
+  .data-table select{ min-width:200px; font-size:13px; }
+}
+@media (max-width:640px){
+  .header{ padding-right:0; align-items:center; }
+  .header .actions{
+    position:static; width:100%;
+    display:flex; justify-content:center; margin-top:8px;
+  }
+  .btn{ width:max(180px,50%); }
+  .map-card svg{ height:64vw; min-height:260px; }
+  table{ min-width:740px; }
+  .data-table select{ min-width:180px; font-size:13px; }
+  .notes-box{ min-height:180px; }
+}
+
+/* ---------- Print layout (PDF) ---------- */
+@page{ size:A4 portrait; margin:12mm; }
+.print-page{ margin-bottom:24px; }
+.page-break-avoid{ break-inside:avoid; page-break-inside:avoid; }
+.screen-only{ display:block; }
+.print-only{ display:none; }
+
+@media print{
+  body{ -webkit-print-color-adjust:exact; print-color-adjust:exact; color:#000; }
+  .container{ max-width:none; margin:0; padding:0; }
+
+  #notes-print-card.print-only{ display:block !important; break-inside:avoid; }
+  #page3{ display:none !important; }
+
+  #page2 .map-card{ border:0; padding:6mm 8mm; height:125mm; break-inside:avoid; }
+  #page2 svg{ width:100% !important; height:calc(100% - 24px) !important; }
+
+  .table-wrap{ overflow:visible !important; }
+  table{ width:100% !important; min-width:0 !important; table-layout:auto !important; }
+  .data-table thead th, .cloud-table thead th{ width:auto !important; }
+
+  .data-table th, .data-table td, .cloud-table th, .cloud-table td{
+    padding:8px 10px; font-size:12.5px;
+  }
+  .data-table select{ min-width:0 !important; width:100% !important; font-size:12.5px !important; }
+
+  .data-table tr, .cloud-table tr{ break-inside:avoid; page-break-inside:avoid; }
+  .data-table tr>*:last-child, .cloud-table tr>*:last-child{ border-right:3px solid #000 !important; }
+
+  .print-page{ break-after:page; page-break-after:always; }
+  .screen-only{ display:none !important; }
+  svg{ shape-rendering:crispEdges; }
+}
+
+@media print { .map-tooltip{ display:none !important; } }
