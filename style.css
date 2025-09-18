@@ -1,0 +1,75 @@
+/* === Reset & Layout === */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Arial, sans-serif; background: #f2f2f2; display: flex; justify-content: center; }
+.container { background: #fff; padding: 20px; max-width: 794px; width: 100%; margin: 20px auto; box-shadow: 0 0 12px rgba(0,0,0,0.1); overflow-x: auto; }
+
+/* Pages */
+.page { padding: 20px 0; page-break-after: always; page-break-inside: avoid; }
+.page:last-child { page-break-after: auto; }
+
+/* Headings */
+.center-title { font-size: 24px; text-align: center; margin-bottom: 6px; }
+.center-date  { font-size: 14px; text-align: center; margin-bottom: 10px; }
+
+/* Notes block */
+.bulletin-text {
+  border: 1px solid #ccc; padding: 10px; margin: 20px auto; border-radius: 6px;
+  max-width: 600px; text-align: justify; font-size: 13px; line-height: 1.6;
+  white-space: pre-wrap; overflow-wrap: break-word; page-break-inside: avoid;
+  min-height: 100px; max-height: 400px; overflow-y: auto;
+}
+
+/* Tables */
+.cloud-info-table, .forecast-table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 13px; }
+.cloud-info-table th, .cloud-info-table td,
+.forecast-table th, .forecast-table td { border: 1.4px solid #222; padding: 6px; text-align: center; vertical-align: middle; }
+.cloud-info-table th, .forecast-table th { background-color: #cce6ff; font-weight: bold; }
+
+/* Stripe only forecast/subdivision tables (not the colored classification swatches) */
+.forecast-table tbody tr:nth-child(even) { background: #f9f9f9; }
+.cloud-cover-reference .cloud-info-table tbody tr:nth-child(even) { background: transparent; }
+
+.table-title { text-align: center; font-size: 18px; font-weight: bold; margin: 20px 0 10px; }
+
+/* Dropdowns */
+select { width: 100%; padding: 4px; font-size: 12px; }
+.forecast-table tbody tr:hover { background: #e9f2ff !important; }
+.forecast-table td select:hover { outline: 2px solid #99c2ff; cursor: pointer; }
+
+/* Maps */
+.map-label { text-align: center; font-weight: bold; font-size: 14px; margin: 10px 0; }
+.map-wrapper { margin: 10px auto; max-width: 720px; position: relative; page-break-inside: avoid; }
+svg { width: 100%; height: 520px; display: block; border: 1px solid #ccc; margin: auto; }
+
+/* Legend */
+.map-legend { position: absolute; top: 12px; right: 12px; background: #fff; border: 1px solid #ccc; padding: 8px 12px; font-size: 12px; border-radius: 6px; box-shadow: 0 0 4px rgba(0,0,0,0.1); width: fit-content; z-index: 10; }
+.map-legend ul { list-style: none; padding: 0; margin: 0; }
+.map-legend li { margin-bottom: 6px; display: flex; align-items: center; }
+.legend-swatch { width: 18px; height: 18px; border: 1.4px solid #222; margin-right: 6px; display: inline-block; border-radius: 3px; }
+.map-legend .legend-pattern { display:inline-block; width:18px; height:18px; margin-right:6px; border:1.4px solid #222; border-radius:3px; background-image: repeating-linear-gradient(45deg, #999 0, #999 1px, transparent 1px, transparent 4px); }
+
+/* Excel palette swatches */
+.swatch-clear    { background:#9ED1E6 !important; color:#063647; font-weight:600; }
+.swatch-low      { background:#B9DB6E !important; color:#2C4400; font-weight:600; }
+.swatch-medium   { background:#FFE93A !important; color:#4A3D00; font-weight:700; }
+.swatch-high     { background:#E28322 !important; color:#3A1E00; font-weight:700; }
+.swatch-overcast { background:#FF3A3A !important; color:#4A0000; font-weight:700; }
+
+/* Subdivision table tweaks */
+.subdivision-table td, .subdivision-table th { text-align: left; }
+.subdivision-table td:nth-child(1),
+.subdivision-table td:nth-child(3),
+.subdivision-table th:nth-child(1),
+.subdivision-table th:nth-child(3) { text-align: center; }
+.subdivision-table td:nth-child(5), .subdivision-table th:nth-child(5) { width: 140px; }
+
+/* Note row */
+.note-row { text-align: left; padding: 8px 10px; font-size: 12px; background: #fff9e6; color: #5a4100; font-weight: 600; }
+
+/* Hover & icons */
+.state:hover { filter: drop-shadow(0 0 3px rgba(0,0,0,0.25)); cursor: pointer; }
+.forecast-icon { font-size: 16px; text-align: center; display: block; pointer-events: none; }
+
+/* Button */
+button { display: block; margin: 30px auto 10px; padding: 10px 20px; font-size: 14px; background: #007bff; border: none; color: #fff; border-radius: 6px; cursor: pointer; }
+button:hover { background: #0056b3; }
