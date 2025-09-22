@@ -150,7 +150,6 @@ function findDistrictNameKey(props = {}) {
     "NAME_2","name_2","NAME2","name2",
     "NAME","name","NAMELSAD","NL_NAME_2"
   ];
-  
   for (const k of exact) if (k in props) return k;
 
   // 2) Fuzzy: a key that mentions both "dist" and "name"
@@ -544,6 +543,10 @@ async function openPunjabDistrictView(dayKey){
     return featsAll.filter(f => String(f.properties[sKey]||"").toLowerCase()==="punjab");
   })();
 
+  // ✅ pick the correct district-name property from the file
+  const sampleProps = feats[0]?.properties || {};
+  const DIST_KEY = findDistrictNameKey(sampleProps);
+
   const fc = { type:"FeatureCollection", features: feats };
   const projection = d3.geoMercator().fitExtent([[12,12],[588,508]], fc);
   const path = d3.geoPath(projection);
@@ -554,8 +557,7 @@ async function openPunjabDistrictView(dayKey){
 
   // --- Hover tooltip with district name + current day label + emoji ---
   const panelTooltip = ensureTooltip();
-  const DIST_KEYS = ["DISTRICT","District","dist_name","NAME_2","name","NAME"];
-  const DIST_KEY = DIST_KEYS.find(k => k in (feats[0]?.properties || {})) || "name";
+
   nodes
     .style("cursor","pointer")
     .on("pointerenter", function(){ d3.select(this).raise().attr("stroke-width", 1.8); })
@@ -565,7 +567,8 @@ async function openPunjabDistrictView(dayKey){
     })
     .on("pointermove", function (event, d) {
       const labelDay = document.querySelector('input[name="dp-day"]:checked')?.value || "day1";
-      const name  = d?.properties?.[DIST_KEY] ?? "District";
+      const raw   = d?.properties?.[DIST_KEY];
+      const name  = (raw == null ? "" : String(raw)).trim() || "District";
       const lab   = d?.properties?._labels?.[labelDay] || "";
       const emoji = (window.forecastIcons || {})[lab] || "";
       const html = `<div style="font-weight:800;margin-bottom:4px">${name}</div>
