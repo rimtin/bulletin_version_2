@@ -1,18 +1,40 @@
-// === Sub-division coloring by ST_NM with centered icons + per-map legends ===
+// =============================
+// app.js — DAILY-ONLY (Sub-division)
+// Open-Meteo daily cloud_cover_mean + NASA POWER daily CLOUD_AMT (ensemble)
+// Sub-division coloring, centered icons, per-map legends, IMD WMS (visual)
+// =============================
 
+// ---------- Global stores ----------
 const W = 860, H = 580, PAD = 18;
-const MATCH_KEY = "ST_NM";       // color by this field in GeoJSON
+
+// IMPORTANT: set this to the *sub-division* property in your GeoJSON
+// (examples: "SUBDIV", "name", "NAME_2"). It must match your subdivision table names.
+let MATCH_KEY = "name";
+
+// These get auto-detected from the first feature for convenience (fallbacks set here):
 let STATE_KEY = "ST_NM";
-let NAME_KEY  = "name";
+let NAME_KEY  = "name"; // district/subdivision display label (for tooltip only)
 
-// Per-map stores
-const indexByGroup  = { "#indiaMapDay1": new Map(), "#indiaMapDay2": new Map() }; // norm(ST_NM) -> [paths]
-const groupCentroid = { "#indiaMapDay1": {}, "#indiaMapDay2": {} };                // norm(ST_NM) -> [x,y]
+// Per-map indexes (keyed by normalized sub-division label)
+const indexByGroup     = { "#indiaMapDay1": new Map(), "#indiaMapDay2": new Map() }; // norm -> [SVGPath]
+const groupCentroid    = { "#indiaMapDay1": {}, "#indiaMapDay2": {} };                // norm -> [x,y] (pixel)
+const groupGeoCentroid = { "#indiaMapDay1": {}, "#indiaMapDay2": {} };                // norm -> [lon,lat]
 
-// optional fine-tune offsets per group
+// Optional fine-tune offsets for certain labels, e.g. { "west rajasthan": {dx: 8, dy: -6} }
 const ICON_OFFSETS = {};
 
-// ---------- helpers ----------
+// ---------- Daily ensemble config ----------
+const IST_TZ = "Asia/Kolkata";
+
+// ---------- Optional IMD WMS overlay (visual only) ----------
+const IMD_WMS_BASE    = "https://webgis.imd.gov.in/geoserver/IMD_Data/wms";
+const IMD_WMS_LAYER   = "";         // e.g. "IMD_Data:INSAT_CLOUDS_LATEST" once you confirm from GetCapabilities
+const IMD_WMS_VERSION = "1.3.0";    // Use "1.1.1" if you prefer lon,lat BBOX order
+const IMD_WMS_CRS     = "EPSG:4326";
+const IMD_WMS_OPACITY = 0.45;
+const INDIA_BBOX      = { minLon: 68, minLat: 6, maxLon: 98, maxLat: 37 }; // rough India extent
+
+// ---------- Tooltip ----------
 let mapTooltip = null;
 function ensureTooltip(){
   if (!mapTooltip){
@@ -24,18 +46,24 @@ function ensureTooltip(){
   return mapTooltip;
 }
 
+// ---------- Helpers ----------
 const norm = s => String(s || "")
   .toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g,"")
   .replace(/\s*&\s*/g, " and ").replace(/\s*\([^)]*\)\s*/g, " ")
   .replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
 
 function detectKeys(features){
-  const sKeys = ["ST_NM","st_nm","STATE","STATE_UT","NAME_1","state_name","State"];
-  const dKeys = ["DISTRICT","name","NAME_2","Name","district","dist_name"];
   const sample = features[0]?.properties || {};
+  const sKeys = ["ST_NM","st_nm","STATE","STATE_UT","NAME_1","state_name","State"];
+  const dKeys = ["SUBDIV","SUBDIVISION","name","NAME_2","Name","district","DISTRICT","dist_name"];
+
   STATE_KEY = sKeys.find(k => k in sample) || STATE_KEY;
   NAME_KEY  = dKeys.find(k => k in sample) || NAME_KEY;
-  console.log("[Map] keys:", { stateKey: STATE_KEY, districtKey: NAME_KEY, matchKey: MATCH_KEY });
+
+  // If MATCH_KEY is not present, default to NAME_KEY
+  if (!(MATCH_KEY in sample)) MATCH_KEY = NAME_KEY;
+
+  console.log("[Map] keys:", { stateKey: STATE_KEY, subdivKey: NAME_KEY, matchKey: MATCH_KEY });
 }
 
 function pickProjection(fc){
@@ -53,7 +81,7 @@ function ensureLayer(svg, className){
   return g;
 }
 
-// Robust GeoJSON fallbacks
+// ---------- Robust GeoJSON fallbacks ----------
 const GEO_URLS = [
   "indian_met_zones.geojson",
   "assets/indian_met_zones.geojson",
@@ -71,12 +99,12 @@ async function fetchFirst(urls){
       const j = await r.json();
       console.log("[Map] Loaded:", url);
       return j;
-    }catch{}
+    }catch{ /* try next */ }
   }
   throw new Error("No GeoJSON found");
 }
 
-/* ---------- COLORED cloud table ---------- */
+// ---------- Cloud reference table (optional pretty block) ----------
 function buildCloudTable(){
   const table = document.getElementById("cloudTable");
   if (!table) return;
@@ -99,7 +127,7 @@ function buildCloudTable(){
   });
 }
 
-/* ---------- legends ---------- */
+// ---------- Legends (per map) ----------
 function drawLegend(svg, title){
   svg.selectAll(".map-legend").remove();
   const pal = window.forecastColors || {};
@@ -127,7 +155,7 @@ function drawLegend(svg, title){
   });
 }
 
-/* ---------- helper: color the select controls ---------- */
+// ---------- Color the <select> UI ----------
 function colorizeSelect(sel, label){
   const pal=window.forecastColors||{};
   const c=pal[label]||"#fff";
@@ -136,21 +164,28 @@ function colorizeSelect(sel, label){
   sel.style.borderColor="#000";
 }
 
-/* ---------- draw one map ---------- */
+// ---------- Draw ONE map (sub-division polygons) ----------
 async function drawMap(svgId){
   const svg = d3.select(svgId);
   svg.selectAll("*").remove();
 
-  // layers
+  // defs
   const defs = svg.append("defs");
   defs.append("pattern").attr("id","diagonalHatch").attr("patternUnits","userSpaceOnUse")
     .attr("width",6).attr("height",6)
     .append("path").attr("d","M0,0 l6,6").attr("stroke","#999").attr("stroke-width",1);
 
+  // layers
   const fillLayer = ensureLayer(svg, "fill-layer");
   ensureLayer(svg, "icon-layer").style("pointer-events","none");
 
-  // load features
+  // size
+  svg.attr("viewBox", `0 0 ${W} ${H}`);
+
+  // optional IMD WMS behind polygons
+  addWMSOverlay(svgId);
+
+  // load GeoJSON
   let features = [];
   try{
     const geo = await fetchFirst(GEO_URLS);
@@ -159,7 +194,6 @@ async function drawMap(svgId){
       : (geo.features || []);
   }catch(e){ alert("Could not load GeoJSON"); console.error(e); return; }
   if (!features.length){ alert("GeoJSON has 0 features"); return; }
-  console.log("[Map] Features:", features.length);
 
   detectKeys(features);
 
@@ -167,15 +201,16 @@ async function drawMap(svgId){
   const projection = pickProjection(fc);
   const path = d3.geoPath(projection);
 
+  // draw
   const paths = fillLayer.selectAll("path").data(features).join("path")
     .attr("class","subdiv")
     .attr("data-st", d => d.properties?.[STATE_KEY] ?? "")
-    .attr("data-d",  d => d.properties?.[NAME_KEY]  ?? "")
+    .attr("data-sub", d => d.properties?.[NAME_KEY]  ?? "")
     .attr("d", path)
     .attr("fill", "url(#diagonalHatch)")
     .attr("stroke", "#666").attr("stroke-width", 0.7);
 
-  // --- hover tooltip (only for configured 19 sub-divisions) ---
+  // Tooltip only for configured sub-divisions
   const allowed = new Set((window.subdivisions || []).map(r => norm(r.name)));
   const tooltip = ensureTooltip();
 
@@ -186,8 +221,7 @@ async function drawMap(svgId){
       const key = norm(raw);
       if (!allowed.has(key)) { tooltip.style("opacity", 0); return; }
 
-      // clamp tooltip inside viewport
-      const pad = 14, vw = window.innerWidth, vh = window.innerHeight, ttW = 200, ttH = 44;
+      const pad = 14, vw = window.innerWidth, vh = window.innerHeight, ttW = 220, ttH = 44;
       let x = event.clientX + pad, y = event.clientY + pad;
       if (x + ttW > vw) x = vw - ttW - pad;
       if (y + ttH > vh) y = vh - ttH - pad;
@@ -198,7 +232,7 @@ async function drawMap(svgId){
     .on("pointerleave", function(){ tooltip.style("opacity", 0); })
     .style("cursor", d => allowed.has(norm(d?.properties?.[MATCH_KEY] ?? "")) ? "pointer" : "default");
 
-  // index & group by ST_NM
+  // Build group indexes keyed by sub-division label (normalized)
   const idx = new Map(), groups = new Map();
   paths.each(function(d){
     const key = norm(String(d.properties?.[MATCH_KEY] ?? ""));
@@ -208,20 +242,31 @@ async function drawMap(svgId){
   });
   indexByGroup[svgId] = idx;
 
-  // projected centroid per group
+  // Centroids per group (pixel + geographic)
   groupCentroid[svgId] = {};
+  groupGeoCentroid[svgId] = {};
   const gp = d3.geoPath(projection);
+
   groups.forEach((arr, key) => {
     const groupFC = { type: "FeatureCollection", features: arr };
+
+    // pixel centroid (for icon placement)
     let [x, y] = gp.centroid(groupFC);
     const off = ICON_OFFSETS[key]; if (off) { x += off.dx||0; y += off.dy||0; }
     if (Number.isFinite(x) && Number.isFinite(y)) groupCentroid[svgId][key] = [x,y];
+
+    // geographic centroid (lon, lat) for API calls
+    const [lon, lat] = d3.geoCentroid(groupFC);
+    if (Number.isFinite(lon) && Number.isFinite(lat)) groupGeoCentroid[svgId][key] = [lon, lat];
   });
 
+  // Legend
   drawLegend(svg, svgId === "#indiaMapDay1" ? "Index — Day 1" : "Index — Day 2");
 
+  // After second map: build table, color once
   if (svgId === "#indiaMapDay2"){
     buildFixedTable();
+    // Ensure selects have a value
     document.querySelectorAll("#forecast-table-body select").forEach(sel => {
       if (sel.options.length && sel.selectedIndex < 0) sel.selectedIndex = 0;
     });
@@ -229,16 +274,15 @@ async function drawMap(svgId){
   }
 }
 
-/* ---------- Forecast table with merged State cells ---------- */
+// ---------- Forecast table (merged State column) ----------
 function buildFixedTable(){
   const tbody = document.getElementById("forecast-table-body");
   if (!tbody) return;
   tbody.innerHTML = "";
 
   const options = window.forecastOptions || [];
-
-  // group by state
   const byState = new Map();
+
   (window.subdivisions || []).forEach(row => {
     if (!byState.has(row.state)) byState.set(row.state, []);
     byState.get(row.state).push(row);
@@ -275,14 +319,12 @@ function buildFixedTable(){
       const s1 = document.createElement("select");
       const s2 = document.createElement("select");
       [s1, s2].forEach(sel=>{
-        options.forEach(opt => {
+        (options || []).forEach(opt => {
           const o = document.createElement("option");
           o.value = opt; o.textContent = opt;
           sel.appendChild(o);
         });
-        sel.addEventListener("change", () => {
-          updateMapColors();               // recolor map + all selects
-        });
+        sel.addEventListener("change", updateMapColors);
         if (sel.options.length && sel.selectedIndex < 0) sel.selectedIndex = 0;
       });
 
@@ -309,7 +351,7 @@ function highlight(label, on){
   });
 }
 
-/* ---------- coloring + icons + colored selects ---------- */
+// ---------- Coloring + icons + colored selects ----------
 function updateMapColors(){
   const pal   = window.forecastColors || {};
   const icons = window.forecastIcons  || {};
@@ -336,7 +378,7 @@ function updateMapColors(){
     // reset fills
     svg.selectAll(".subdiv").attr("fill","url(#diagonalHatch)");
 
-    // icon layer on top
+    // icons layer
     const gIcons = ensureLayer(svg, "icon-layer").style("pointer-events","none");
     gIcons.raise(); gIcons.selectAll("*").remove();
 
@@ -350,12 +392,13 @@ function updateMapColors(){
       if (!pos) return;
       const [x,y] = pos;
 
-      // dot + emoji
+      // anchor dot
       gIcons.append("circle")
         .attr("cx", x).attr("cy", y).attr("r", 5.5)
         .attr("fill", "#f5a623").attr("stroke","#fff")
         .attr("stroke-width",1.3).attr("vector-effect","non-scaling-stroke");
 
+      // emoji icon
       const emoji = icons[rec[dayKey]];
       if (emoji) {
         gIcons.append("text")
@@ -372,7 +415,7 @@ function updateMapColors(){
   });
 }
 
-/* ---------- Print notes mirroring (PDF: notes under table) ---------- */
+// ---------- Print notes mirroring to print-only textarea ----------
 function wirePrintNotesMirror(){
   const live = document.getElementById('notes');
   const ghost = document.getElementById('notes-print');
@@ -380,10 +423,174 @@ function wirePrintNotesMirror(){
   const sync = () => { ghost.value = live.value; };
   live.addEventListener('input', sync);
   window.addEventListener('beforeprint', sync);
-  sync(); // initial
+  sync();
 }
 
-/* ---------- init ---------- */
+// ============================
+// DAILY ENSEMBLE (Open-Meteo + NASA POWER)
+// ============================
+function isoTodayIST() {
+  const now = new Date();
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: IST_TZ, year: 'numeric', month: '2-digit', day: '2-digit'
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(now).map(p => [p.type, p.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`; // YYYY-MM-DD
+}
+function yyyymmddIST(offsetDays = 0) {
+  const now = new Date();
+  const withOffset = new Date(now.getTime() + (330*60*1000) + offsetDays*24*60*60*1000);
+  const y = withOffset.getUTCFullYear();
+  const m = String(withOffset.getUTCMonth()+1).padStart(2,'0');
+  const d = String(withOffset.getUTCDate()).padStart(2,'0');
+  return `${y}${m}${d}`;
+}
+function avg(nums) { const a = (nums||[]).filter(Number.isFinite); return a.length ? a.reduce((x,y)=>x+y,0)/a.length : undefined; }
+function fixPercentUnits(v){ if(v==null) return undefined; const n=Number(v); if(!isFinite(n)) return undefined; return n<=1 ? n*100 : n; }
+
+// Open-Meteo daily mean cloud cover
+async function fetchOpenMeteoDaily(lat, lon) {
+  const url = new URL("https://api.open-meteo.com/v1/forecast");
+  url.searchParams.set("latitude",  lat.toFixed(4));
+  url.searchParams.set("longitude", lon.toFixed(4));
+  url.searchParams.set("daily", "cloud_cover_mean");
+  url.searchParams.set("forecast_days", "3");
+  url.searchParams.set("timezone", IST_TZ);
+
+  const res = await fetch(url.toString(), { mode: "cors" });
+  const j = await res.json();
+
+  const t = j?.daily?.time || [];
+  const v = j?.daily?.cloud_cover_mean || [];
+  const today = isoTodayIST();
+  const idx = t.indexOf(today);
+
+  const d1 = idx >= 0 ? v[idx] : v[0];
+  const d2 = (idx >= 0 && v[idx+1]!=null) ? v[idx+1] : v[1];
+
+  return { day1: Number(d1), day2: Number(d2) };
+}
+
+// NASA POWER daily CLOUD_AMT (may lag 1–3 days)
+async function fetchNASAPowerDaily(lat, lon) {
+  const start = yyyymmddIST(0); // today
+  const end   = yyyymmddIST(1); // tomorrow
+
+  const url = new URL("https://power.larc.nasa.gov/api/temporal/daily/point");
+  url.searchParams.set("parameters", "CLOUD_AMT");
+  url.searchParams.set("community", "RE");
+  url.searchParams.set("format", "JSON");
+  url.searchParams.set("latitude",  lat.toFixed(4));
+  url.searchParams.set("longitude", lon.toFixed(4));
+  url.searchParams.set("start", start);
+  url.searchParams.set("end",   end);
+
+  const res = await fetch(url.toString(), { mode: "cors" });
+  const j = await res.json();
+
+  const obj = j?.properties?.parameter?.CLOUD_AMT || {};
+  const d1 = fixPercentUnits(obj[start]);
+  const d2 = fixPercentUnits(obj[end]);
+
+  return { day1: d1, day2: d2 };
+}
+
+async function ensembleDaily(lat, lon) {
+  const [om, np] = await Promise.allSettled([
+    fetchOpenMeteoDaily(lat, lon),
+    fetchNASAPowerDaily(lat, lon)
+  ]);
+  const a = om.status === "fulfilled" ? om.value : {};
+  const b = np.status === "fulfilled" ? np.value : {};
+
+  return {
+    day1: avg([a.day1, b.day1].filter(v => v!=null)) ?? a.day1 ?? b.day1,
+    day2: avg([a.day2, b.day2].filter(v => v!=null)) ?? a.day2 ?? b.day2,
+  };
+}
+
+function cloudLabel(pct) {
+  const v = Number(pct);
+  if (!isFinite(v)) return "Clear Sky";
+  if (v < 10) return "Clear Sky";
+  if (v < 30) return "Low Cloud Cover";
+  if (v < 50) return "Medium Cloud Cover";
+  if (v < 75) return "High Cloud Cover";
+  return "Overcast Cloud Cover";
+}
+window.cloudLabel = window.cloudLabel || cloudLabel;
+
+function setRowFromPct(row, p1, p2){
+  const s1 = row.querySelector('td[data-col="day1"] select');
+  const s2 = row.querySelector('td[data-col="day2"] select');
+  if (s1 && p1!=null) s1.value = cloudLabel(p1);
+  if (s2 && p2!=null) s2.value = cloudLabel(p2);
+}
+
+// Public: Autofill daily labels for *sub-divisions*
+async function autoFillFromAPIsSubdiv(){
+  const tbody = document.getElementById("forecast-table-body");
+  if (!tbody) return;
+
+  const btn = document.getElementById("autofillBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "Fetching…"; }
+
+  for (const tr of tbody.querySelectorAll("tr")){
+    const subdivRaw = tr.dataset.subdiv;
+    const key = norm(subdivRaw);
+
+    // use Day-1 map’s group geo centroid (same grouping on both maps)
+    const gloc = groupGeoCentroid["#indiaMapDay1"]?.[key];
+    if (!gloc) { console.warn("[No centroid]", subdivRaw); continue; }
+    const [lon, lat] = gloc;
+
+    const { day1, day2 } = await ensembleDaily(lat, lon);
+    setRowFromPct(tr, day1, day2);
+    updateMapColors(); // repaint incrementally
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = "Auto-fill from APIs (Ensemble)"; }
+}
+window.autoFillFromAPIsSubdiv = autoFillFromAPIsSubdiv;
+
+// ---------- IMD WMS overlay behind polygons ----------
+function addWMSOverlay(svgId){
+  if (!IMD_WMS_LAYER) return; // skip unless configured
+
+  const wrap = document.querySelector(`${svgId}`)?.parentElement; // expect .map-wrapper
+  if (!wrap) return;
+  wrap.style.position = wrap.style.position || "relative";
+
+  const svg = document.querySelector(svgId);
+  const vb = (svg?.getAttribute("viewBox")||"0 0 860 580").split(/\s+/).map(Number);
+  const w = vb[2] || 860; const h = vb[3] || 580;
+
+  // Axis order: WMS 1.3.0 + EPSG:4326 => lat,lon; 1.1.1 => lon,lat
+  const bbox = (IMD_WMS_VERSION === "1.3.0" && IMD_WMS_CRS === "EPSG:4326")
+    ? `${INDIA_BBOX.minLat},${INDIA_BBOX.minLon},${INDIA_BBOX.maxLat},${INDIA_BBOX.maxLon}`
+    : `${INDIA_BBOX.minLon},${INDIA_BBOX.minLat},${INDIA_BBOX.maxLon},${INDIA_BBOX.maxLat}`;
+
+  const url = `${IMD_WMS_BASE
+    }?SERVICE=WMS&REQUEST=GetMap&VERSION=${encodeURIComponent(IMD_WMS_VERSION)
+    }&CRS=${encodeURIComponent(IMD_WMS_CRS)
+    }&LAYERS=${encodeURIComponent(IMD_WMS_LAYER)
+    }&STYLES=&FORMAT=image/png&TRANSPARENT=true&WIDTH=${w}&HEIGHT=${h}&BBOX=${bbox}`;
+
+  let img = wrap.querySelector("img.imd-wms");
+  if (!img){
+    img = document.createElement("img");
+    img.className = "imd-wms";
+    img.style.position = "absolute";
+    img.style.left = 0; img.style.top = 0;
+    img.style.width = "100%"; img.style.height = "100%";
+    img.style.opacity = String(IMD_WMS_OPACITY);
+    img.style.pointerEvents = "none"; // mouse events go to SVG
+    wrap.prepend(img); // behind the SVG
+  }
+  img.src = url;
+}
+
+// ---------- Init ----------
 function init(){
   if (typeof updateISTDate === "function") updateISTDate();
   buildCloudTable();
