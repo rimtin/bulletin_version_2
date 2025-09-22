@@ -67,6 +67,24 @@
       </div>
     </header>
 
+          <!-- Daily-only: Punjab District Forecast Panel -->
+      <div id="districtPanel" class="district-panel hidden" aria-live="polite">
+        <div class="dp-header">
+          <strong id="dp-title">Punjab — District Forecast</strong>
+          <div class="dp-actions">
+            <label><input type="radio" name="dp-day" value="day1" checked> Day 1</label>
+            <label><input type="radio" name="dp-day" value="day2"> Day 2</label>
+            <button id="dp-close" type="button" title="Close panel">Close</button>
+          </div>
+        </div>
+      
+        <div class="dp-mapwrap">
+          <svg id="punjabDistrictMap" viewBox="0 0 600 520" role="img" aria-label="Punjab districts cloud forecast"></svg>
+        </div>
+      
+        <div class="dp-legend" aria-hidden="true"></div>
+      </div>
+
     <!-- Cloud Cover Classification -->
     <section class="bg-white shadow-soft rounded-3xl p-6 mb-8">
       <h3 class="text-xl font-bold mb-4">Cloud Cover Classification</h3>
