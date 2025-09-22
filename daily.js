@@ -1,4 +1,4 @@
-// === Map + table app (legend + satellite + hourly Day1/Day2) ===
+// === Map + table app (legend + satellite + hourly Day1/Day2 + Punjab panel) ===
 const W = 860, H = 580, PAD = 18;
 const MATCH_KEY = "ST_NM";
 let STATE_KEY = "ST_NM";
@@ -15,14 +15,13 @@ const SATELLITE_LINKS = {
 };
 
 /* ---------------- DAILY auto-fill (Open-Meteo) -------------------- */
-// Add more when you’re ready. Keys must match your table’s "Sub Division" text.
 const CENTROIDS = {
   "Punjab":           { lat: 31.1, lon: 75.4 },
   "West Rajasthan":   { lat: 26.9, lon: 73.2 },
   "East Rajasthan":   { lat: 26.9, lon: 75.8 }
 };
 
-// % → bucket (tweak thresholds if you like)
+// % → bucket
 function bucketFromPct(pct){
   if (pct < 10) return "Clear Sky";
   if (pct < 30) return "Low Cloud Cover";
@@ -31,14 +30,13 @@ function bucketFromPct(pct){
   return "Overcast Cloud Cover";
 }
 
-// severity rank (for “cloudier of West/East Rajasthan”)
+// severity rank (for West/East Rajasthan)
 const BUCKET_RANK = {
   "Clear Sky": 0, "Low Cloud Cover": 1, "Medium Cloud Cover": 2,
   "High Cloud Cover": 3, "Overcast Cloud Cover": 4
 };
 
-/* --------- FIX: use HOURLY cloud from NOW for Day1/Day2 --------- */
-// Fetch 48h of hourly total cloud cover; bucket Day1/Day2 from NOW (IST)
+/* --------- HOURLY → Day1/Day2 from NOW (IST) --------- */
 async function fetchHourlyCloudBuckets(lat, lon){
   const url = `https://api.open-meteo.com/v1/forecast`+
               `?latitude=${lat}&longitude=${lon}`+
@@ -48,7 +46,6 @@ async function fetchHourlyCloudBuckets(lat, lon){
   const j = await r.json();
 
   const arr = j?.hourly?.cloud_cover || [];
-  // Day 1: next 24h, Day 2: hours 25–48
   const a1 = arr.slice(0, 24);
   const a2 = arr.slice(24, 48);
 
@@ -58,7 +55,7 @@ async function fetchHourlyCloudBuckets(lat, lon){
   return { d1, d2 };
 }
 
-// Only runs on daily.html (where <body data-readonly="true">)
+// daily.html only
 async function autoFillDailyFromOpenMeteo(){
   if (document.body.dataset.readonly !== "true") return;
 
@@ -72,12 +69,10 @@ async function autoFillDailyFromOpenMeteo(){
   await Promise.all(unique.map(async name => {
     try{
       const { lat, lon } = CENTROIDS[name];
-      // HOURLY from now → Day1/Day2
       results[name] = await fetchHourlyCloudBuckets(lat, lon);
     }catch(e){ console.warn("Open-Meteo failed for", name, e); }
   }));
 
-  // Rajasthan (cloudier of West/East)
   const west = results["West Rajasthan"];
   const east = results["East Rajasthan"];
   let rajasthan = null;
@@ -99,7 +94,7 @@ async function autoFillDailyFromOpenMeteo(){
       s1.value = rajasthan.d1;
       s2.value = rajasthan.d2;
     }
-    s1.disabled = true; s2.disabled = true; // daily page is read-only
+    s1.disabled = true; s2.disabled = true;
   });
 
   updateMapColors();
@@ -142,7 +137,7 @@ function ensureLayer(svg, className){
   return g;
 }
 
-// Robust GeoJSON fallbacks
+// GeoJSON fallbacks
 const GEO_URLS = [
   "indian_met_zones.geojson",
   "assets/indian_met_zones.geojson",
@@ -197,7 +192,7 @@ function drawLegendWithButton(svg, title, linkUrl){
 
   const pad = 10, sw = 18, gap = 18;
   const width = 210;
-  const height = pad + 18 + labels.length * gap + 44; // space for button
+  const height = pad + 18 + labels.length * gap + 44;
 
   const g = svg.append("g")
     .attr("class", "map-legend")
@@ -221,7 +216,6 @@ function drawLegendWithButton(svg, title, linkUrl){
       .text(label);
   });
 
-  // Button (open in new tab)
   const btnW = width - pad*2, btnH = 28, btnY = height - pad - btnH;
   const btn = g.append("g")
     .attr("class", "legend-btn")
@@ -277,7 +271,7 @@ async function drawMap(svgId){
     .attr("fill", "url(#diagonalHatch)")
     .attr("stroke", "#666").attr("stroke-width", 0.7);
 
-  // hover tooltip for configured sub-divisions
+  // tooltip + cursor
   const allowed = new Set((window.subdivisions || []).map(r => norm(r.name)));
   const tooltip = ensureTooltip();
   paths.on("pointerenter", function(){ d3.select(this).raise(); })
@@ -285,17 +279,26 @@ async function drawMap(svgId){
       const raw = d?.properties?.[MATCH_KEY] ?? "";
       const key = norm(raw);
       if (!allowed.has(key)) { tooltip.style("opacity", 0); return; }
-
       const pad = 14, vw = innerWidth, vh = innerHeight, ttW = 200, ttH = 44;
       let x = event.clientX + pad, y = event.clientY + pad;
       if (x + ttW > vw) x = vw - ttW - pad;
       if (y + ttH > vh) y = vh - ttH - pad;
-
-      tooltip.style("opacity", 1).html(raw)
-             .style("left", x + "px").style("top", y + "px");
+      tooltip.style("opacity", 1).html(raw).style("left", x + "px").style("top", y + "px");
     })
     .on("pointerleave", () => tooltip.style("opacity", 0))
     .style("cursor", d => allowed.has(norm(d?.properties?.[MATCH_KEY] ?? "")) ? "pointer" : "default");
+
+  // ✅ CLICK → Punjab district panel
+  paths.on("click", (evt, d) => {
+    const st = String(d?.properties?.[STATE_KEY] ?? "").toLowerCase();
+    if (st === "punjab") {
+      if (typeof openPunjabDistrictView === "function") {
+        openPunjabDistrictView("day1");
+      } else {
+        alert("Punjab click detected — add openPunjabDistrictView()");
+      }
+    }
+  });
 
   // index & group by ST_NM
   const idx = new Map(), groups = new Map();
@@ -316,7 +319,6 @@ async function drawMap(svgId){
     if (Number.isFinite(x) && Number.isFinite(y)) groupCentroid[svgId][key] = [x,y];
   });
 
-  // For Day2: after table exists, color + auto-fill if daily page
   if (svgId === "#indiaMapDay2"){
     buildFixedTable();
     document.querySelectorAll("#forecast-table-body select").forEach(sel=>{
@@ -326,7 +328,6 @@ async function drawMap(svgId){
     updateMapColors();
   }
 
-  // Legend + satellite button (top-right)
   const title = (svgId === "#indiaMapDay1") ? "Index — Day 1" : "Index — Day 2";
   drawLegendWithButton(svg, title, SATELLITE_LINKS[svgId] || SATELLITE_LINKS["#indiaMapDay1"]);
 }
@@ -466,6 +467,96 @@ function updateMapColors(){
   });
 }
 
+/* ---------------- Punjab District Panel (Daily Only) ---------------- */
+
+// Robust sources: Punjab-only and all-India (we filter to ST_NM='Punjab' if needed)
+const PUNJAB_DISTRICT_URLS = [
+  "assets/punjab_districts.geojson",
+  "punjab_districts.geojson",
+  "https://cdn.jsdelivr.net/gh/udit-001/india-maps-data@main/geojson/states/punjab.geojson",
+  "https://cdn.jsdelivr.net/gh/udit-001/india-maps-data@main/geojson/india_districts.geojson"
+];
+
+async function fetchFirstJSON(urls){
+  for (const u of urls){
+    try{
+      const r = await fetch(u, {cache:"no-cache"});
+      if (r.ok) return await r.json();
+    }catch{}
+  }
+  throw new Error("Punjab districts GeoJSON not found.");
+}
+
+function openDistrictPanel(){ document.getElementById("districtPanel")?.classList.remove("hidden"); }
+function closeDistrictPanel(){ document.getElementById("districtPanel")?.classList.add("hidden"); }
+document.addEventListener("click", e=>{ if (e.target?.id==="dp-close") closeDistrictPanel(); });
+document.addEventListener("change", e=>{ if (e.target?.name==="dp-day") openPunjabDistrictView(e.target.value); });
+
+async function openPunjabDistrictView(dayKey){
+  const svg = d3.select("#punjabDistrictMap"); if (svg.empty()) return;
+  svg.selectAll("*").remove();
+
+  const geo = await fetchFirstJSON(PUNJAB_DISTRICT_URLS);
+  const featsAll = (geo.type === "Topology")
+    ? topojson.feature(geo, geo.objects[Object.keys(geo.objects)[0]]).features
+    : (geo.features || []);
+  if (!featsAll.length) throw new Error("No district features.");
+
+  // If file contains all states, filter to Punjab
+  const feats = (() => {
+    const p = featsAll[0]?.properties || {};
+    const sKey = ("ST_NM" in p) ? "ST_NM" : (("st_nm" in p) ? "st_nm" : null);
+    if (!sKey) return featsAll; // already Punjab-only file
+    return featsAll.filter(f => String(f.properties[sKey]||"").toLowerCase()==="punjab");
+  })();
+
+  const fc = { type:"FeatureCollection", features: feats };
+  const projection = d3.geoMercator().fitExtent([[12,12],[588,508]], fc);
+  const path = d3.geoPath(projection);
+
+  const g = svg.append("g").attr("class","punjab-fill");
+  const nodes = g.selectAll("path").data(feats).join("path")
+    .attr("d", path).attr("fill","#eee").attr("stroke","#333").attr("stroke-width",0.8);
+
+  const icons = svg.append("g").attr("class","punjab-icons").style("pointer-events","none");
+  const dayRadio = document.querySelector('input[name="dp-day"]:checked');
+  const day = dayKey || (dayRadio ? dayRadio.value : "day1");
+
+  for (const f of feats){
+    const [lon, lat] = d3.geoCentroid(f);
+    const [x, y]     = path.centroid(f);
+    // You can switch to the ensemble (Open-Meteo + NASA POWER) later;
+    // keeping hourly-derived buckets consistent with the daily page for now:
+    const { d1, d2 } = await fetchHourlyCloudBuckets(lat, lon);
+    const label = day === "day1" ? d1 : d2;
+    const color = (window.forecastColors||{})[label] || "#ddd";
+
+    nodes.filter(d=>d===f).attr("fill", color);
+
+    icons.append("circle").attr("cx",x).attr("cy",y).attr("r",5.5)
+      .attr("fill","#f5a623").attr("stroke","#fff").attr("stroke-width",1.3);
+    const emoji = (window.forecastIcons||{})[label];
+    if (emoji) icons.append("text")
+      .attr("x",x).attr("y",y).attr("text-anchor","middle").attr("dominant-baseline","central")
+      .attr("font-size",18).attr("paint-order","stroke").attr("stroke","white").attr("stroke-width",2)
+      .text(emoji);
+  }
+
+  // legend
+  const host = d3.select(".dp-legend"); host.selectAll("*").remove();
+  const labs = Object.keys(window.forecastColors||{});
+  const leg = host.append("svg").attr("width",300).attr("height", 12 + labs.length*20);
+  labs.forEach((lab,i)=>{
+    const y = 12 + i*20;
+    leg.append("rect").attr("x",8).attr("y",y-10).attr("width",14).attr("height",14)
+      .attr("fill", (window.forecastColors||{})[lab]||"#eee").attr("stroke","#999");
+    leg.append("text").attr("x",28).attr("y",y+2).attr("font-size",12).text(lab);
+  });
+
+  document.getElementById("dp-title").textContent = "Punjab — District Forecast";
+  openDistrictPanel();
+}
+
 /* ---------------- Init ---------------- */
 function init(){
   if (typeof updateISTDate === "function") updateISTDate();
@@ -475,20 +566,9 @@ function init(){
 }
 document.addEventListener("DOMContentLoaded", init);
 
-// --- bucket function ---
-function bucketFromPct(pct) {
-  if (pct < 10) return "Clear Sky";
-  if (pct < 30) return "Low Cloud Cover";
-  if (pct < 50) return "Medium Cloud Cover";
-  if (pct < 75) return "High Cloud Cover";
-  return "Overcast Cloud Cover";
-}
-
-// --- fetch helper for 48h hourly cloud_cover ---
+/* --- (older helper kept for compat; unused if data-readonly="true") --- */
 async function fetchHourlyCloud(lat, lon) {
-  const url = `https://api.open-meteo.com/v1/forecast`+
-              `?latitude=${lat}&longitude=${lon}`+
-              `&hourly=cloud_cover&forecast_hours=48&timezone=Asia%2FKolkata`;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=cloud_cover&forecast_hours=48&timezone=Asia%2FKolkata`;
   const r = await fetch(url);
   const j = await r.json();
   const arr = j?.hourly?.cloud_cover || [];
@@ -498,9 +578,8 @@ async function fetchHourlyCloud(lat, lon) {
   return { d1, d2 };
 }
 
-// --- auto fill for daily.html ---
 async function autoFillDaily() {
-  if (!document.body.classList.contains("auto-daily")) return; // add class in daily.html <body>
+  if (!document.body.classList.contains("auto-daily")) return;
   const centroids = {
     "Punjab": { lat: 30.84285, lon: 75.41854 },
     "W-Raj": { lat: 27.15893, lon: 72.70219 },
@@ -511,7 +590,6 @@ async function autoFillDaily() {
     try { results[name] = await fetchHourlyCloud(lat,lon); }
     catch(e){ console.warn("fetch fail", name, e); }
   }
-  // Rajasthan = cloudier of West/East
   if (results["W-Raj"] && results["E-Raj"]) {
     const rank = {"Clear Sky":0,"Low Cloud Cover":1,"Medium Cloud Cover":2,"High Cloud Cover":3,"Overcast Cloud Cover":4};
     results["Rajasthan"] = {
@@ -519,7 +597,6 @@ async function autoFillDaily() {
       d2: rank[results["W-Raj"].d2] >= rank[results["E-Raj"].d2] ? results["W-Raj"].d2 : results["E-Raj"].d2
     };
   }
-  // populate selects
   document.querySelectorAll("#forecast-table-body tr").forEach(tr => {
     const st = tr.dataset.state;
     const s1 = tr.querySelectorAll("select")[0];
@@ -532,5 +609,4 @@ async function autoFillDaily() {
   });
   updateMapColors();
 }
-
 window.addEventListener("load", autoFillDaily);
