@@ -30,6 +30,16 @@
       border-radius:12px; padding:8px 10px; box-shadow:0 10px 20px rgba(0,0,0,.18), 0 2px 6px rgba(0,0,0,.12);
       border:1px solid rgba(0,0,0,.18); font-size:13px; font-weight:700; line-height:1.2; max-width:220px; white-space:nowrap;
     }
+
+    /* === Punjab District Panel === */
+    .district-panel{position:fixed;right:16px;top:16px;width:640px;max-width:92vw;background:#fff;border-radius:14px;box-shadow:0 20px 40px rgba(0,0,0,.18);z-index:50;padding:12px}
+    .district-panel.hidden{display:none}
+    .dp-header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px}
+    .dp-actions{display:flex;gap:12px;align-items:center}
+    .dp-mapwrap{position:relative;isolation:isolate}
+    .dp-legend{margin-top:6px}
+    #dp-close{background:#2563eb;color:#fff;border:0;border-radius:10px;padding:6px 10px;font-weight:700;cursor:pointer}
+    #dp-close:hover{filter:brightness(1.05)}
   </style>
 
   <!-- D3 + TopoJSON (must be before app.js) -->
@@ -67,23 +77,21 @@
       </div>
     </header>
 
-          <!-- Daily-only: Punjab District Forecast Panel -->
-      <div id="districtPanel" class="district-panel hidden" aria-live="polite">
-        <div class="dp-header">
-          <strong id="dp-title">Punjab — District Forecast</strong>
-          <div class="dp-actions">
-            <label><input type="radio" name="dp-day" value="day1" checked> Day 1</label>
-            <label><input type="radio" name="dp-day" value="day2"> Day 2</label>
-            <button id="dp-close" type="button" title="Close panel">Close</button>
-          </div>
+    <!-- Punjab District Forecast Panel -->
+    <div id="districtPanel" class="district-panel hidden" aria-live="polite">
+      <div class="dp-header">
+        <strong id="dp-title">Punjab — District Forecast</strong>
+        <div class="dp-actions">
+          <label><input type="radio" name="dp-day" value="day1" checked> Day 1</label>
+          <label><input type="radio" name="dp-day" value="day2"> Day 2</label>
+          <button id="dp-close" type="button" title="Close panel">Close</button>
         </div>
-      
-        <div class="dp-mapwrap">
-          <svg id="punjabDistrictMap" viewBox="0 0 600 520" role="img" aria-label="Punjab districts cloud forecast"></svg>
-        </div>
-      
-        <div class="dp-legend" aria-hidden="true"></div>
       </div>
+      <div class="dp-mapwrap">
+        <svg id="punjabDistrictMap" viewBox="0 0 600 520" role="img" aria-label="Punjab districts cloud forecast"></svg>
+      </div>
+      <div class="dp-legend" aria-hidden="true"></div>
+    </div>
 
     <!-- Cloud Cover Classification -->
     <section class="bg-white shadow-soft rounded-3xl p-6 mb-8">
@@ -135,7 +143,7 @@
     </section>
   </main>
 
-  <!-- Load order: data.js FIRST, then app.js -->
+  <!-- Load order: data.js FIRST, then daily.js -->
   <script src="data.js"></script>
   <script src="daily.js"></script>
 </body>
