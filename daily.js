@@ -1,4 +1,4 @@
-// === Map + table app (legend + satellite + hourly Day1/Day2 + Punjab panel) ===
+// === Map + table app (legend + satellite + hourly Day1/Day2 + Punjab panel + IST rollover) ===
 const W = 860, H = 580, PAD = 18;
 const MATCH_KEY = "ST_NM";
 let STATE_KEY = "ST_NM";
@@ -40,7 +40,7 @@ const BUCKET_RANK = {
 async function fetchHourlyCloudBuckets(lat, lon){
   const url = `https://api.open-meteo.com/v1/forecast`+
               `?latitude=${lat}&longitude=${lon}`+
-              `&hourly=cloud_cover&forecast_hours=48&timezone=Asia%2FKolkata`;
+              `&hourly=cloud_cover&forecast_hours=48&timezone=Asia%2FKolkata&_=${Date.now()}`;
   const r = await fetch(url, { cache: "no-store" });
   if (!r.ok) throw new Error("Open-Meteo error");
   const j = await r.json();
@@ -140,8 +140,6 @@ function ensureLayer(svg, className){
 // --- Robust district-name key finder ---
 function findDistrictNameKey(props = {}) {
   const keys = Object.keys(props);
-
-  // 1) High-confidence exact matches, ordered by preference
   const exact = [
     "DISTRICT","District","district",
     "DIST_NAME","DIST_NM","DISTNAME","dist_name",
@@ -152,21 +150,18 @@ function findDistrictNameKey(props = {}) {
   ];
   for (const k of exact) if (k in props) return k;
 
-  // 2) Fuzzy: a key that mentions both "dist" and "name"
   const fuzzyDN = keys.find(k => {
     const s = k.toLowerCase();
     return s.includes("dist") && s.includes("name");
   });
   if (fuzzyDN) return fuzzyDN;
 
-  // 3) Fuzzy: a generic name-like key that is not the state name
   const fuzzyName = keys.find(k => {
     const s = k.toLowerCase();
     return s.startsWith("name") && !s.includes("state") && !s.includes("st_nm");
   });
   if (fuzzyName) return fuzzyName;
 
-  // 4) Last resort: first property key
   return keys[0] || "name";
 }
 
@@ -271,7 +266,6 @@ async function drawMap(svgId){
   const svg = d3.select(svgId);
   svg.selectAll("*").remove();
 
-  // layers
   const defs = svg.append("defs");
   defs.append("pattern").attr("id","diagonalHatch").attr("patternUnits","userSpaceOnUse")
     .attr("width",6).attr("height",6)
@@ -321,7 +315,7 @@ async function drawMap(svgId){
     .on("pointerleave", () => tooltip.style("opacity", 0))
     .style("cursor", d => allowed.has(norm(d?.properties?.[MATCH_KEY] ?? "")) ? "pointer" : "default");
 
-  // ✅ CLICK → Punjab district panel
+  // CLICK → Punjab district panel
   paths.on("click", (evt, d) => {
     const st = String(d?.properties?.[STATE_KEY] ?? "").toLowerCase();
     if (st === "punjab") {
@@ -543,7 +537,7 @@ async function openPunjabDistrictView(dayKey){
     return featsAll.filter(f => String(f.properties[sKey]||"").toLowerCase()==="punjab");
   })();
 
-  // ✅ pick the correct district-name property from the file
+  // pick the correct district-name property from the file
   const sampleProps = feats[0]?.properties || {};
   const DIST_KEY = findDistrictNameKey(sampleProps);
 
@@ -555,7 +549,7 @@ async function openPunjabDistrictView(dayKey){
   const nodes = g.selectAll("path").data(feats).join("path")
     .attr("d", path).attr("fill","#eee").attr("stroke","#333").attr("stroke-width",0.8);
 
-  // --- Hover tooltip with district name + current day label + emoji ---
+  // Hover tooltip (district name + current day label + emoji)
   const panelTooltip = ensureTooltip();
 
   nodes
@@ -587,12 +581,11 @@ async function openPunjabDistrictView(dayKey){
   const dayRadio = document.querySelector('input[name="dp-day"]:checked');
   const day = dayKey || (dayRadio ? dayRadio.value : "day1");
 
-  // Color districts + drop emoji; cache both Day1/Day2 labels
+  // Color districts + emoji; cache both Day1/Day2 labels
   for (const f of feats){
     const [lon, lat] = d3.geoCentroid(f);
     const [x, y]     = path.centroid(f);
 
-    // get labels for both days and cache
     const { d1, d2 } = await fetchHourlyCloudBuckets(lat, lon);
     f.properties._labels = { day1: d1, day2: d2 };
 
@@ -626,19 +619,57 @@ async function openPunjabDistrictView(dayKey){
   openDistrictPanel();
 }
 
+/* ---------------- Daily rollover at IST midnight ---------------- */
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;   // UTC→IST
+let __rolloverTimer = null;
+let __periodicTimer = null;
+
+function msUntilNextISTMidnight() {
+  const now = Date.now();
+  const istNow = now + IST_OFFSET_MS;
+  const startOfTodayIST = Math.floor(istNow / 86400000) * 86400000;
+  const nextMidnightIST = startOfTodayIST + 86400000;
+  return Math.max(0, nextMidnightIST - istNow);
+}
+
+async function doDailyRefresh() {
+  await autoFillDailyFromOpenMeteo().catch(() => {});
+  updateMapColors();
+
+  const panel = document.getElementById("districtPanel");
+  if (panel && !panel.classList.contains("hidden")) {
+    const day = document.querySelector('input[name="dp-day"]:checked')?.value || "day1";
+    await openPunjabDistrictView(day);
+  }
+}
+
+function scheduleDailyRollover() {
+  if (__rolloverTimer) clearTimeout(__rolloverTimer);
+  if (__periodicTimer) clearInterval(__periodicTimer);
+
+  __rolloverTimer = setTimeout(async () => {
+    await doDailyRefresh();
+    scheduleDailyRollover(); // schedule the next day
+  }, msUntilNextISTMidnight() + 2000);
+
+  // Safety refresh every 6 hours
+  __periodicTimer = setInterval(doDailyRefresh, 6 * 60 * 60 * 1000);
+}
+
 /* ---------------- Init ---------------- */
 function init(){
   if (typeof updateISTDate === "function") updateISTDate();
   buildCloudTable();
   drawMap("#indiaMapDay1");
   drawMap("#indiaMapDay2");
+  scheduleDailyRollover(); // keep the page “daily”
 }
 document.addEventListener("DOMContentLoaded", init);
 
 /* --- (older helper kept for compat; unused if data-readonly="true") --- */
 async function fetchHourlyCloud(lat, lon) {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=cloud_cover&forecast_hours=48&timezone=Asia%2FKolkata`;
-  const r = await fetch(url);
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=cloud_cover&forecast_hours=48&timezone=Asia%2FKolkata&_=${Date.now()}`;
+  const r = await fetch(url, { cache: "no-store" });
   const j = await r.json();
   const arr = j?.hourly?.cloud_cover || [];
   const mean = a => a.reduce((s,x)=>s+(x??0),0)/a.length;
