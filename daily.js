@@ -518,24 +518,56 @@ async function openPunjabDistrictView(dayKey){
   const nodes = g.selectAll("path").data(feats).join("path")
     .attr("d", path).attr("fill","#eee").attr("stroke","#333").attr("stroke-width",0.8);
 
+  // --- Hover tooltip with district name + current day label + emoji ---
+  const panelTooltip = ensureTooltip();
+  const DIST_KEYS = ["DISTRICT","District","dist_name","NAME_2","name","NAME"];
+  const DIST_KEY = DIST_KEYS.find(k => k in (feats[0]?.properties || {})) || "name";
+  nodes
+    .style("cursor","pointer")
+    .on("pointerenter", function(){ d3.select(this).raise().attr("stroke-width", 1.8); })
+    .on("pointerleave", function(){
+      d3.select(this).attr("stroke-width", 0.8);
+      panelTooltip.style("opacity", 0);
+    })
+    .on("pointermove", function (event, d) {
+      const labelDay = document.querySelector('input[name="dp-day"]:checked')?.value || "day1";
+      const name  = d?.properties?.[DIST_KEY] ?? "District";
+      const lab   = d?.properties?._labels?.[labelDay] || "";
+      const emoji = (window.forecastIcons || {})[lab] || "";
+      const html = `<div style="font-weight:800;margin-bottom:4px">${name}</div>
+                    <div style="display:flex;align-items:center;gap:6px;font-weight:600">
+                      <span>${emoji}</span><span>${lab || "—"}</span>
+                    </div>`;
+      const pad = 12, vw = window.innerWidth, vh = window.innerHeight;
+      const ttW = 260, ttH = 56;
+      let x = event.clientX + pad, y = event.clientY + pad;
+      if (x + ttW > vw) x = vw - ttW - pad;
+      if (y + ttH > vh) y = vh - ttH - pad;
+      panelTooltip.style("opacity", 1).html(html).style("left", x + "px").style("top", y + "px");
+    });
+
   const icons = svg.append("g").attr("class","punjab-icons").style("pointer-events","none");
   const dayRadio = document.querySelector('input[name="dp-day"]:checked');
   const day = dayKey || (dayRadio ? dayRadio.value : "day1");
 
+  // Color districts + drop emoji; cache both Day1/Day2 labels
   for (const f of feats){
     const [lon, lat] = d3.geoCentroid(f);
     const [x, y]     = path.centroid(f);
-    // You can switch to the ensemble (Open-Meteo + NASA POWER) later;
-    // keeping hourly-derived buckets consistent with the daily page for now:
-    const { d1, d2 } = await fetchHourlyCloudBuckets(lat, lon);
-    const label = day === "day1" ? d1 : d2;
-    const color = (window.forecastColors||{})[label] || "#ddd";
 
-    nodes.filter(d=>d===f).attr("fill", color);
+    // get labels for both days and cache
+    const { d1, d2 } = await fetchHourlyCloudBuckets(lat, lon);
+    f.properties._labels = { day1: d1, day2: d2 };
+
+    const labelNow = f.properties._labels[day] || d1;
+    const color = (window.forecastColors||{})[labelNow] || "#ddd";
+
+    nodes.filter(d => d === f).attr("fill", color);
 
     icons.append("circle").attr("cx",x).attr("cy",y).attr("r",5.5)
       .attr("fill","#f5a623").attr("stroke","#fff").attr("stroke-width",1.3);
-    const emoji = (window.forecastIcons||{})[label];
+
+    const emoji = (window.forecastIcons||{})[labelNow];
     if (emoji) icons.append("text")
       .attr("x",x).attr("y",y).attr("text-anchor","middle").attr("dominant-baseline","central")
       .attr("font-size",18).attr("paint-order","stroke").attr("stroke","white").attr("stroke-width",2)
