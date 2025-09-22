@@ -245,3 +245,14 @@ table{ width:100%; border-collapse:separate; border-spacing:0; table-layout:fixe
 }
 
 @media print { .map-tooltip{ display:none !important; } }
+
+/* === Daily-only: Punjab District Panel === */
+.district-panel{position:fixed;right:16px;top:16px;width:640px;max-width:92vw;background:#fff;border-radius:14px;box-shadow:0 20px 40px rgba(0,0,0,.18);z-index:50;padding:12px}
+.district-panel.hidden{display:none}
+.dp-header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px}
+.dp-actions{display:flex;gap:12px;align-items:center}
+.dp-mapwrap{position:relative;isolation:isolate}
+.dp-legend{margin-top:6px}
+#dp-close{background:#2563eb;color:#fff;border:0;border-radius:10px;padding:6px 10px;font-weight:700;cursor:pointer}
+#dp-close:hover{filter:brightness(1.05)}
+
