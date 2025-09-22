@@ -1,4 +1,4 @@
-// === Map + table app (legend + satellite + hourly Day1/Day2 + Punjab panel + IST rollover) ===
+// === Map + table app (legend + satellite + hourly Day1/Day2 + Punjab panel + IST rollover, STATIC per day) ===
 const W = 860, H = 580, PAD = 18;
 const MATCH_KEY = "ST_NM";
 let STATE_KEY = "ST_NM";
@@ -37,6 +37,7 @@ const BUCKET_RANK = {
 };
 
 /* --------- HOURLY → Day1/Day2 from NOW (IST) --------- */
+// cache-busted so the FIRST fetch of the day is fresh, then we keep it
 async function fetchHourlyCloudBuckets(lat, lon){
   const url = `https://api.open-meteo.com/v1/forecast`+
               `?latitude=${lat}&longitude=${lon}`+
@@ -55,7 +56,7 @@ async function fetchHourlyCloudBuckets(lat, lon){
   return { d1, d2 };
 }
 
-// daily.html only
+// daily.html only (fills sub-division table once per load; rollover will refresh)
 async function autoFillDailyFromOpenMeteo(){
   if (document.body.dataset.readonly !== "true") return;
 
@@ -137,7 +138,7 @@ function ensureLayer(svg, className){
   return g;
 }
 
-// --- Robust district-name key finder ---
+// Robust district-name key finder
 function findDistrictNameKey(props = {}) {
   const keys = Object.keys(props);
   const exact = [
@@ -149,19 +150,16 @@ function findDistrictNameKey(props = {}) {
     "NAME","name","NAMELSAD","NL_NAME_2"
   ];
   for (const k of exact) if (k in props) return k;
-
   const fuzzyDN = keys.find(k => {
     const s = k.toLowerCase();
     return s.includes("dist") && s.includes("name");
   });
   if (fuzzyDN) return fuzzyDN;
-
   const fuzzyName = keys.find(k => {
     const s = k.toLowerCase();
     return s.startsWith("name") && !s.includes("state") && !s.includes("st_nm");
   });
   if (fuzzyName) return fuzzyName;
-
   return keys[0] || "name";
 }
 
@@ -494,9 +492,9 @@ function updateMapColors(){
   });
 }
 
-/* ---------------- Punjab District Panel (Daily Only) ---------------- */
+/* ---------------- Punjab District Panel (Daily, STATIC) ---------------- */
 
-// Robust sources: Punjab-only and all-India (we filter to ST_NM='Punjab' if needed)
+// Sources: Punjab-only / all-India (we filter to ST_NM='Punjab' if needed)
 const PUNJAB_DISTRICT_URLS = [
   "assets/punjab_districts.geojson",
   "punjab_districts.geojson",
@@ -519,6 +517,39 @@ function closeDistrictPanel(){ document.getElementById("districtPanel")?.classLi
 document.addEventListener("click", e=>{ if (e.target?.id==="dp-close") closeDistrictPanel(); });
 document.addEventListener("change", e=>{ if (e.target?.name==="dp-day") openPunjabDistrictView(e.target.value); });
 
+/* === STATIC cache: one set of labels per IST day === */
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+function istDateKey() {
+  const now = Date.now() + IST_OFFSET_MS;
+  const y = new Date(now).getUTCFullYear();
+  const m = String(new Date(now).getUTCMonth()+1).padStart(2,'0');
+  const d = String(new Date(now).getUTCDate()).padStart(2,'0');
+  return `${y}-${m}-${d}`;
+}
+let PUNJAB_DAY_CACHE = { date: null, byKey: new Map() }; // key -> {day1,day2}
+
+function clearPunjabCache(){ PUNJAB_DAY_CACHE = { date: null, byKey: new Map() }; }
+
+/* compute labels for all districts ONCE per day */
+async function computePunjabLabelsIfNeeded(feats, keyName){
+  const today = istDateKey();
+  if (PUNJAB_DAY_CACHE.date !== today) {
+    PUNJAB_DAY_CACHE = { date: today, byKey: new Map() };
+  }
+  const cache = PUNJAB_DAY_CACHE.byKey;
+
+  for (const f of feats){
+    const key = String(f.properties[keyName] ?? f.properties.DISTRICT ?? f.properties.NAME ?? "").trim();
+    if (!key) continue;
+    if (!cache.has(key)) {
+      const [lon, lat] = d3.geoCentroid(f);
+      const { d1, d2 } = await fetchHourlyCloudBuckets(lat, lon);
+      cache.set(key, { day1: d1, day2: d2 });
+    }
+    f.properties._labels = cache.get(key);
+  }
+}
+
 async function openPunjabDistrictView(dayKey){
   const svg = d3.select("#punjabDistrictMap"); if (svg.empty()) return;
   svg.selectAll("*").remove();
@@ -537,9 +568,11 @@ async function openPunjabDistrictView(dayKey){
     return featsAll.filter(f => String(f.properties[sKey]||"").toLowerCase()==="punjab");
   })();
 
-  // pick the correct district-name property from the file
   const sampleProps = feats[0]?.properties || {};
   const DIST_KEY = findDistrictNameKey(sampleProps);
+
+  // ✅ compute & cache labels ONLY if needed for today's date
+  await computePunjabLabelsIfNeeded(feats, DIST_KEY);
 
   const fc = { type:"FeatureCollection", features: feats };
   const projection = d3.geoMercator().fitExtent([[12,12],[588,508]], fc);
@@ -549,7 +582,6 @@ async function openPunjabDistrictView(dayKey){
   const nodes = g.selectAll("path").data(feats).join("path")
     .attr("d", path).attr("fill","#eee").attr("stroke","#333").attr("stroke-width",0.8);
 
-  // Hover tooltip (district name + current day label + emoji)
   const panelTooltip = ensureTooltip();
 
   nodes
@@ -581,15 +613,10 @@ async function openPunjabDistrictView(dayKey){
   const dayRadio = document.querySelector('input[name="dp-day"]:checked');
   const day = dayKey || (dayRadio ? dayRadio.value : "day1");
 
-  // Color districts + emoji; cache both Day1/Day2 labels
+  // Color districts from the CACHED labels
   for (const f of feats){
-    const [lon, lat] = d3.geoCentroid(f);
-    const [x, y]     = path.centroid(f);
-
-    const { d1, d2 } = await fetchHourlyCloudBuckets(lat, lon);
-    f.properties._labels = { day1: d1, day2: d2 };
-
-    const labelNow = f.properties._labels[day] || d1;
+    const [x, y] = path.centroid(f);
+    const labelNow = f.properties._labels?.[day];
     const color = (window.forecastColors||{})[labelNow] || "#ddd";
 
     nodes.filter(d => d === f).attr("fill", color);
@@ -620,7 +647,6 @@ async function openPunjabDistrictView(dayKey){
 }
 
 /* ---------------- Daily rollover at IST midnight ---------------- */
-const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;   // UTC→IST
 let __rolloverTimer = null;
 let __periodicTimer = null;
 
@@ -633,13 +659,14 @@ function msUntilNextISTMidnight() {
 }
 
 async function doDailyRefresh() {
+  clearPunjabCache();                      // invalidate district cache
   await autoFillDailyFromOpenMeteo().catch(() => {});
   updateMapColors();
 
   const panel = document.getElementById("districtPanel");
   if (panel && !panel.classList.contains("hidden")) {
     const day = document.querySelector('input[name="dp-day"]:checked')?.value || "day1";
-    await openPunjabDistrictView(day);
+    await openPunjabDistrictView(day);     // recompute once for the new day
   }
 }
 
@@ -652,7 +679,7 @@ function scheduleDailyRollover() {
     scheduleDailyRollover(); // schedule the next day
   }, msUntilNextISTMidnight() + 2000);
 
-  // Safety refresh every 6 hours
+  // Safety refresh every 6 hours (in case the tab slept through midnight)
   __periodicTimer = setInterval(doDailyRefresh, 6 * 60 * 60 * 1000);
 }
 
