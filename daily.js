@@ -137,6 +137,40 @@ function ensureLayer(svg, className){
   return g;
 }
 
+// --- Robust district-name key finder ---
+function findDistrictNameKey(props = {}) {
+  const keys = Object.keys(props);
+
+  // 1) High-confidence exact matches, ordered by preference
+  const exact = [
+    "DISTRICT","District","district",
+    "DIST_NAME","DIST_NM","DISTNAME","dist_name",
+    "DT_NAME","DTNAME","dt_name","dtname",
+    "DISTRICT_N","District_Name",
+    "NAME_2","name_2","NAME2","name2",
+    "NAME","name","NAMELSAD","NL_NAME_2"
+  ];
+  
+  for (const k of exact) if (k in props) return k;
+
+  // 2) Fuzzy: a key that mentions both "dist" and "name"
+  const fuzzyDN = keys.find(k => {
+    const s = k.toLowerCase();
+    return s.includes("dist") && s.includes("name");
+  });
+  if (fuzzyDN) return fuzzyDN;
+
+  // 3) Fuzzy: a generic name-like key that is not the state name
+  const fuzzyName = keys.find(k => {
+    const s = k.toLowerCase();
+    return s.startsWith("name") && !s.includes("state") && !s.includes("st_nm");
+  });
+  if (fuzzyName) return fuzzyName;
+
+  // 4) Last resort: first property key
+  return keys[0] || "name";
+}
+
 // GeoJSON fallbacks
 const GEO_URLS = [
   "indian_met_zones.geojson",
