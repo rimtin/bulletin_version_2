@@ -1,346 +1,281 @@
-/* ========= Hourly page logic (ensemble + map + charts) ========= */
+/* ====== Hourly (India → Punjab districts) ======
+ * - Loads Punjab district GeoJSON (several fallbacks)
+ * - Labels districts, hover tooltip
+ * - Click district -> fetch Open-Meteo hourly cloud (48h)
+ * - Charts show DAYLIGHT ONLY (04:00–19:00 IST)
+ * - Uses Chart.js if available, otherwise builds simple SVG lines
+ */
+
 const IST_TZ = "Asia/Kolkata";
+const DAYLIGHT_START = 4;   // 4:00
+const DAYLIGHT_END   = 19;  // 19:00
 const MAX_HOURS = 48;
-const W = 860, H = 580, PAD = 18;
 
-// --- Regions (centroids used for API queries) ---
-const CENTROIDS = {
-  "Punjab":         { lat: 30.84284696845263, lon: 75.41854251284677 },
-  "West Rajasthan": { lat: 27.1589259099715,  lon: 72.70218563309521 },
-  "East Rajasthan": { lat: 25.810727217600284,lon: 75.39163711411086 }
-};
-// derived Rajasthan = max(West, East) is computed after fetch
+let selectedDistrict = null;
+let selectedLatLon   = null;
+let mapProjection    = null;
 
-// --- helpers ---
-const COLORS = (window.forecastColors || {
-  "Clear Sky":"#66CCFF","Low Cloud Cover":"#57E66D","Medium Cloud Cover":"#FFF500","High Cloud Cover":"#FF8A00","Overcast Cloud Cover":"#FF0000"
-});
-const ICONS = (window.forecastIcons || {"Clear Sky":"☀️","Low Cloud Cover":"🌤️","Medium Cloud Cover":"⛅","High Cloud Cover":"🌥️","Overcast Cloud Cover":"☁️"});
-
-const fmtIST = s => {
-  const d = new Date(s);
-  return d.toLocaleString("en-IN", {hour:"2-digit", minute:"2-digit", weekday:"short", day:"2-digit", month:"short", hour12:true, timeZone: IST_TZ});
-};
-const bucketFromPct = p => (p<10)?"Clear Sky":(p<30)?"Low Cloud Cover":(p<50)?"Medium Cloud Cover":(p<75)?"High Cloud Cover":"Overcast Cloud Cover";
-const norm = s => String(s||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
-const getParam = k => new URLSearchParams(location.search).get(k);
-
-// ---------- Data fetchers ----------
-function buildOMUrl(lat,lon,parts="hourly=cloud_cover&forecast_hours=48"){
-  return `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&${parts}&timezone=${encodeURIComponent(IST_TZ)}`;
-}
-async function fetchOpenMeteo(lat, lon){
-  const uHours = buildOMUrl(lat,lon,"hourly=cloud_cover&forecast_hours=48");
-  const uSun   = buildOMUrl(lat,lon,"daily=sunrise,sunset&forecast_days=3");
-  const [rh, rs] = await Promise.all([fetch(uHours,{cache:"no-store"}), fetch(uSun,{cache:"no-store"})]);
-  if(!rh.ok) throw new Error("Open-Meteo hourly failed");
-  if(!rs.ok) throw new Error("Open-Meteo sunrise/sunset failed");
-  const jh = await rh.json(); const js = await rs.json();
-  const times = (jh.hourly?.time || []).slice(0,MAX_HOURS);
-  const vals  = (jh.hourly?.cloud_cover || []).slice(0,MAX_HOURS).map(v=>+v||0);
-  const sunrise = js?.daily?.sunrise || [];
-  const sunset  = js?.daily?.sunset  || [];
-  return { times, vals, sunrise, sunset };
-}
-
-// Optional: OpenWeatherMap OneCall (needs ?owm=KEY). Uses clouds% from hourly.
-async function fetchOpenWeatherMap(lat, lon){
-  const key = getParam("owm") || window.OWM_KEY;
-  if (!key) return null;
-  const url = `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&exclude=current,minutely,daily,alerts&appid=${key}`;
-  const r = await fetch(url, { cache:"no-store" });
-  if (!r.ok) throw new Error("OpenWeatherMap failed");
-  const j = await r.json();
-  const hours = (j.hourly||[]).slice(0,MAX_HOURS);
-  // OWM times are UNIX seconds (UTC). We keep only the order; OM is our time axis.
-  const vals = hours.map(h => Number(h.clouds)||0);
-  return { vals };
-}
-
-// Merge sources by index (both are hourly series). OM is the master time axis.
-function ensembleSeries(omVals, owmVals){
-  const out = [];
-  for (let i=0;i<Math.min(MAX_HOURS, omVals.length);i++){
-    const a = omVals[i];
-    const b = (owmVals && Number.isFinite(owmVals[i])) ? owmVals[i] : null;
-    if (b==null) { out.push(a); continue; }
-    out.push((a + b) / 2);
-  }
-  return out;
-}
-
-// ---------- Store ----------
-const DATA = {}; // name -> {times[], pct[], om[], owm[], buckets[]}
-let HOUR_IDX = 0;
-let VIEW = "24"; // "24" | "48" | "all"
-let REGION = "Punjab";
-
-// ---------- UI bits ----------
-function updateNowIST(){ document.getElementById("now-ist").textContent =
-  new Date().toLocaleString("en-IN",{ timeZone: IST_TZ, hour:'2-digit', minute:'2-digit', weekday:'long', year:'numeric', month:'long', day:'numeric', hour12:true }); }
-
-function setHourLabel(){
-  const t = DATA["Punjab"]?.times?.[HOUR_IDX];
-  document.getElementById("hourLabel").textContent = t ? fmtIST(t) : "—";
-}
-
-// ---------- Table (classification) ----------
-function buildCloudTable(){
-  const rows = [
-    { cover: "0–10 %",  label: "Clear Sky",            type: "No Cloud" },
-    { cover: "10–30 %", label: "Low Cloud Cover",      type: "Few Clouds" },
-    { cover: "30–50 %", label: "Medium Cloud Cover",   type: "Scattered / Partly Cloudy" },
-    { cover: "50–75 %", label: "High Cloud Cover",     type: "Broken / Mostly Cloudy" },
-    { cover: "75–100 %",label: "Overcast Cloud Cover", type: "Cloudy / Overcast" }
-  ];
-  const tb = document.getElementById("cloudTbody"); tb.innerHTML = "";
-  rows.forEach((r,i)=>{
-    const tr = document.createElement("tr");
-    tr.style.background = COLORS[r.label] || "#fff";
-    tr.innerHTML = `<td class="px-3 py-2">${i+1}</td>
-      <td class="px-3 py-2">${r.cover}</td>
-      <td class="px-3 py-2 font-semibold">${r.label}</td>
-      <td class="px-3 py-2">${r.type}</td>`;
-    tb.appendChild(tr);
-  });
-}
-
-// ---------- Charts ----------
-function drawLineChart(sel, values, options){
-  const svg = d3.select(sel);
-  svg.selectAll("*").remove();
-  const vb = svg.attr("viewBox").split(/\s+/).map(Number);
-  const width = vb[2], height = vb[3], m = {t:18,r:12,b:28,l:36};
-
-  const show = rangeForView(values.length);
-  const xs = d3.scaleLinear().domain([show.s, show.e-1]).range([m.l, width-m.r]);
-  const ys = d3.scaleLinear().domain([0, options.yMax||100]).nice().range([height-m.b, m.t]);
-
-  // axes
-  const ax = g => g.attr("class","axis").call(d3.axisBottom(xs).ticks(8).tickFormat(i=>{
-    const t = DATA[REGION]?.times?.[Math.round(i)];
-    if (!t) return "";
-    const d = new Date(t);
-    return d.toLocaleString("en-IN",{ hour:'2-digit', hour12:true, timeZone: IST_TZ });
-  }));
-  const ay = g => g.attr("class","axis").call(d3.axisLeft(ys).ticks(5));
-  svg.append("g").attr("transform",`translate(0,${height-m.b})`).call(ax);
-  svg.append("g").attr("transform",`translate(${m.l},0)`).call(ay);
-
-  // optional daytime band (approx 06–18 IST each day)
-  if (options.dayBand){
-    const dWidth = 24; // hours
-    const band = [[6,18],[30,42]]; // day1 + day2 indexes
-    svg.append("g").selectAll("rect").data(band).join("rect")
-      .attr("x", d => xs(Math.max(show.s, d[0])))
-      .attr("y", m.t)
-      .attr("width", d => Math.max(0, xs(Math.min(show.e, d[1])) - xs(Math.max(show.s, d[0]))))
-      .attr("height", height-m.t-m.b)
-      .attr("fill", "#e5f0ff")
-      .attr("opacity", .4);
-  }
-
-  // line
-  const line = d3.line()
-    .x((_,i)=> xs(i))
-    .y(v => ys(v))
-    .defined((v,i)=> i>=show.s && i<show.e && Number.isFinite(v));
-
-  svg.append("path")
-    .attr("fill","none")
-    .attr("stroke", options.stroke || "#3b82f6")
-    .attr("stroke-width", 2.2)
-    .attr("d", line(values));
-
-  // current hour marker
-  if (HOUR_IDX>=show.s && HOUR_IDX<show.e){
-    const cx = xs(HOUR_IDX), cy = ys(values[HOUR_IDX]);
-    if (Number.isFinite(cy)) {
-      svg.append("circle").attr("cx",cx).attr("cy",cy).attr("r",4).attr("fill","#111827");
-    }
-  }
-}
-
-function rangeForView(total){
-  if (VIEW==="all") return {s:0,e:Math.min(MAX_HOURS,total)};
-  if (VIEW==="48")  return {s:24,e:Math.min(48,total)};
-  return {s:0,e:Math.min(24,total)};
-}
-
-function repaintCharts(){
-  const d = DATA[REGION];
-  if (!d) return;
-  const sourceTxt = ["Open-Meteo", (d.owm ? "OpenWeatherMap" : null)].filter(Boolean).join(" + ");
-  document.getElementById("sourceTags").textContent = `Sources: ${sourceTxt}`;
-  drawLineChart("#cloudChart", d.pct, { yMax:100, dayBand:true, stroke:"#0ea5e9" });
-
-  // very simple GHI proxy (daylight hours only)
-  const ghi = d.pct.map((p,i)=> ((i%24)>=6 && (i%24)<=18) ? (950*(1 - (p/100))) : 0);
-  drawLineChart("#ghiChart", ghi, { yMax:1000, dayBand:true, stroke:"#10b981" });
-}
-
-// ---------- Map (color only 3 sub-divisions at selected hour) ----------
-const GEO_URLS = [
-  "indian_met_zones.geojson",
-  "assets/indian_met_zones.geojson",
-  "bulletin_version_2/indian_met_zones.geojson",
-  "https://rimtin.github.io/bulletin_version_2/indian_met_zones.geojson",
-  "https://rimtin.github.io/weather_bulletin/indian_met_zones.geojson",
-  "https://raw.githubusercontent.com/rimtin/weather_bulletin/main/indian_met_zones.geojson",
-  "https://cdn.jsdelivr.net/gh/rimtin/weather_bulletin@main/indian_met_zones.geojson"
+const geoUrlsPunjab = [
+  // Put a copy in your repo for fastest load:
+  "assets/punjab_districts.geojson",
+  "punjab_districts.geojson",
+  // GitHub project fallbacks (works if you add the file later):
+  "https://rimtin.github.io/bulletin_version_2/punjab_districts.geojson",
+  // Community datasets (safe fallbacks if you update to real URLs in your repo)
+  "https://raw.githubusercontent.com/datameet/maps/master/Districts/geojson/punjab_districts.geojson",
+  "https://raw.githubusercontent.com/plotfile/india-geo/master/punjab_districts.geojson"
 ];
-let mapIndex = new Map(), mapSvg=null;
-function ensureTooltip(){
-  const ex = d3.select(".map-tooltip");
-  return ex.empty() ? d3.select("body").append("div").attr("class","map-tooltip").style("opacity",0) : ex;
+
+const hourlyStore = new Map(); // key=district -> {times:[], clouds:[], ghi:[]}
+
+/* ---------- helpers ---------- */
+const fmtIST = s => new Date(s); // Open-Meteo returns ISOZ; we only show clock labels
+
+function hourIST(iso) {
+  const d = new Date(iso);
+  // Convert to IST by using locale string; safer to slice hour from ISO then adjust 5:30
+  // but Open-Meteo supports timezone=Asia/Kolkata so hours are already IST.
+  return d.getHours();
 }
-function detectKeys(features){
-  const sample = features[0]?.properties||{};
-  const sKeys=["ST_NM","st_nm","STATE","STATE_UT","NAME_1","state_name","State"];
-  const dKeys=["DISTRICT","name","NAME_2","Name","district","dist_name"];
-  return { STATE_KEY: sKeys.find(k=>k in sample)||"ST_NM", NAME_KEY: dKeys.find(k=>k in sample)||"name" };
+function filterDaylight(times, values) {
+  const t=[], v=[];
+  for (let i = 0; i < times.length; i++) {
+    const h = hourIST(times[i]);
+    if (h >= DAYLIGHT_START && h <= DAYLIGHT_END) { t.push(times[i]); v.push(values[i]); }
+  }
+  return { t, v };
 }
+function ghiProxyFromCloud(pct) {
+  // simple placeholder model like we discussed: 950 * (1 - cloud%)
+  // (clamped ≥0). You can swap with real GHI later.
+  const ghi = 950 * Math.max(0, 1 - (pct||0)/100);
+  return Number.isFinite(ghi) ? ghi : 0;
+}
+function seriesToGHI(values) {
+  return values.map(v => ghiProxyFromCloud(v));
+}
+
+async function fetchHourly(lat, lon) {
+  const url = new URL("https://api.open-meteo.com/v1/forecast");
+  url.searchParams.set("latitude",  lat.toFixed(4));
+  url.searchParams.set("longitude", lon.toFixed(4));
+  url.searchParams.set("hourly", "cloud_cover");
+  url.searchParams.set("timezone", IST_TZ);
+  url.searchParams.set("forecast_hours", String(MAX_HOURS));
+
+  const res = await fetch(url.toString(), { cache: "no-store" });
+  if (!res.ok) throw new Error("Open-Meteo " + res.status);
+  const data = await res.json();
+
+  const times  = (data.hourly?.time || []).slice(0, MAX_HOURS);
+  const clouds = (data.hourly?.cloud_cover || []).slice(0, MAX_HOURS);
+
+  const { t, v } = filterDaylight(times, clouds);   // daylight only
+  const ghi = seriesToGHI(v);
+
+  return { times: t, clouds: v, ghi };
+}
+
+/* ---------- charts (Chart.js first, else SVG) ---------- */
+let cloudChart = null, ghiChart = null;
+
+function ensureCanvas(id, wrapId) {
+  let c = document.getElementById(id);
+  if (c) return c;
+  // if there isn't a canvas, create one inside wrap
+  const wrap = document.getElementById(wrapId) || document.body;
+  c = document.createElement("canvas");
+  c.id = id;
+  wrap.innerHTML = "";
+  wrap.appendChild(c);
+  return c;
+}
+
+function upsertChartJs(id, label, labels, data, yMax, colorIdx=0) {
+  const canvas = ensureCanvas(id, id+"Wrap");
+  const ctx = canvas.getContext("2d");
+  const cfg = {
+    type: "line",
+    data: {
+      labels: labels.map(s => new Date(s).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })),
+      datasets: [{
+        label, data,
+        fill: false, tension: 0.25, pointRadius: 0, borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: { beginAtZero: true, suggestedMax: yMax },
+        x: { ticks: { autoSkip: true, maxTicksLimit: 12 } }
+      },
+      plugins: { legend: { display: false } }
+    }
+  };
+  if (id === "cloudChart") {
+    if (cloudChart) { cloudChart.data = cfg.data; cloudChart.update(); }
+    else cloudChart = new Chart(ctx, cfg);
+  } else {
+    if (ghiChart) { ghiChart.data = cfg.data; ghiChart.update(); }
+    else ghiChart = new Chart(ctx, cfg);
+  }
+}
+
+function simpleSvgLine(wrapId, labels, data, yMax, unit) {
+  const wrap = document.getElementById(wrapId);
+  wrap.innerHTML = "";
+  const W=480, H=240, P=28;
+  const svg = d3.select(wrap).append("svg").attr("width", W).attr("height", H);
+  const x = d3.scalePoint().domain(d3.range(labels.length)).range([P, W-P]);
+  const y = d3.scaleLinear().domain([0, yMax]).nice().range([H-P, P]);
+
+  svg.append("g").attr("transform",`translate(0,${H-P})`).call(d3.axisBottom(x).tickValues(x.domain().filter(i=>i%3===0)).tickFormat(i=>{
+    return new Date(labels[i]).toLocaleTimeString("en-IN", { hour: "numeric" });
+  }));
+  svg.append("g").attr("transform",`translate(${P},0)`).call(d3.axisLeft(y).ticks(5));
+
+  const line = d3.line().x((d,i)=>x(i)).y(d=>y(d));
+  svg.append("path").attr("d", line(data)).attr("fill","none").attr("stroke","#2563eb").attr("stroke-width",2);
+}
+
+function setCharts(times, clouds, ghi){
+  if (window.Chart) {
+    upsertChartJs("cloudChart", "Hourly Cloud %", times, clouds, 100);
+    upsertChartJs("ghiChart",   "GHI (proxy)",   times, ghi,    1000);
+  } else {
+    simpleSvgLine("cloudChartWrap", times, clouds, 100, "%");
+    simpleSvgLine("ghiChartWrap",   times, ghi,    1000, "W/m²");
+  }
+}
+
+/* ---------- Map (Punjab districts) ---------- */
+function detectDistrictKey(sampleProps) {
+  const keys = ["DISTRICT","district","NAME_2","name","dtname","District","Dist_Name"];
+  return keys.find(k => k in sampleProps) || "name";
+}
+
 async function fetchFirst(urls){
-  for (const u of urls){ try{ const r=await fetch(u,{cache:"no-store"}); if(r.ok) return await r.json(); }catch{} }
-  throw new Error("GeoJSON not found");
+  for (const url of urls) {
+    try {
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) continue;
+      const j = await r.json();
+      console.log("[Punjab map] Loaded:", url);
+      return j;
+    } catch {}
+  }
+  throw new Error("No Punjab GeoJSON found.");
 }
-async function drawMap(){
-  const svg = d3.select("#indiaMapHourly"); mapSvg = svg;
+
+function drawLabels(svg, features, path, districtKey){
+  const g = svg.append("g").attr("class","labels").style("pointer-events","none");
+  const f = { type:"FeatureCollection", features: [] };
+  features.forEach(feat=>{
+    const [cx, cy] = path.centroid(feat);
+    if (Number.isFinite(cx) && Number.isFinite(cy)) {
+      g.append("text")
+        .attr("x", cx).attr("y", cy)
+        .attr("text-anchor","middle").attr("dominant-baseline","central")
+        .attr("font-size", 10).attr("font-weight", 700)
+        .attr("stroke","#fff").attr("stroke-width",2).attr("paint-order","stroke")
+        .text(feat.properties[districtKey]);
+    }
+  });
+}
+
+async function drawPunjabMap(){
+  const svg = d3.select("#punjabMap");
+  if (svg.empty()) return;
   svg.selectAll("*").remove();
 
-  const defs = svg.append("defs");
-  defs.append("pattern").attr("id","diag").attr("patternUnits","userSpaceOnUse").attr("width",6).attr("height",6)
-    .append("path").attr("d","M0,0 l6,6").attr("stroke","#9ca3af").attr("stroke-width",1);
-
-  let features=[]; let STATE_KEY="ST_NM", NAME_KEY="name";
+  // Load GeoJSON (FeatureCollection)
+  let features = [];
   try{
-    const geo = await fetchFirst(GEO_URLS);
-    features = (geo.type==="Topology") ? topojson.feature(geo, geo.objects[Object.keys(geo.objects)[0]]).features : (geo.features||[]);
-  }catch(e){ alert("Could not load GeoJSON"); console.error(e); return; }
-  if (!features.length){ alert("GeoJSON has 0 features"); return; }
-
-  ({STATE_KEY, NAME_KEY} = detectKeys(features));
-  const fc = { type:"FeatureCollection", features };
-  const projection = (()=> {
-    const [[minX,minY],[maxX,maxY]]=d3.geoBounds(fc);
-    const lonlat = (maxX-minX)<200 && (maxY-minY)<120;
-    return lonlat ? d3.geoMercator().fitExtent([[PAD,PAD],[W-PAD,H-PAD]],fc)
-                  : d3.geoIdentity().reflectY(true).fitExtent([[PAD,PAD],[W-PAD,H-PAD]],fc);
-  })();
-  const path = d3.geoPath(projection);
-
-  const allowed = new Set(["punjab","west rajasthan","east rajasthan"]);
-  const tt = ensureTooltip();
-  const paths = svg.append("g").selectAll("path").data(features).join("path")
-    .attr("class","subdiv")
-    .attr("d", path)
-    .attr("fill","url(#diag)")
-    .attr("stroke","#666").attr("stroke-width",.7)
-    .on("pointermove", function(evt,d){
-      const raw = d?.properties?.[STATE_KEY] ?? "";
-      const key = norm(raw);
-      if (!allowed.has(key)) { tt.style("opacity",0); return; }
-      const pad=12, w=200, h=40, vw=innerWidth, vh=innerHeight;
-      let x=evt.clientX+pad, y=evt.clientY+pad; if(x+w>vw)x=vw-w-pad; if(y+h>vh)y=vh-h-pad;
-      tt.style("opacity",1).html(raw).style("left",x+"px").style("top",y+"px");
-    }).on("pointerleave", ()=>tt.style("opacity",0));
-
-  // index by normalized state
-  mapIndex.clear();
-  paths.each(function(d){
-    const key = norm(String(d.properties?.[STATE_KEY]||""));
-    if (!key) return;
-    (mapIndex.get(key) || mapIndex.set(key,[]).get(key)).push(this);
-  });
-}
-function colorMapForHour(){
-  if (!mapSvg) return;
-  mapSvg.selectAll(".subdiv").attr("fill", "url(#diag)");
-  const set = [
-    ["punjab",         DATA["Punjab"]?.buckets?.[HOUR_IDX]],
-    ["west rajasthan", DATA["West Rajasthan"]?.buckets?.[HOUR_IDX]],
-    ["east rajasthan", DATA["East Rajasthan"]?.buckets?.[HOUR_IDX]],
-  ];
-  set.forEach(([k,b])=>{
-    const nodes = mapIndex.get(k); if (!nodes || !b) return;
-    const c = COLORS[b] || "#eee";
-    nodes.forEach(n => n.setAttribute("fill", c));
-  });
-}
-
-// ---------- Load + wire ----------
-async function loadRegion(name){
-  const c = CENTROIDS[name];
-  const [om, owm] = await Promise.allSettled([fetchOpenMeteo(c.lat,c.lon), fetchOpenWeatherMap(c.lat,c.lon)]);
-  if (om.status!=="fulfilled") throw om.reason;
-
-  const omVals = om.value.vals;
-  const owmVals = (owm.status==="fulfilled" && owm.value) ? owm.value.vals : null;
-  const pct = ensembleSeries(omVals, owmVals);
-
-  DATA[name] = {
-    times: om.value.times,
-    om: omVals,
-    owm: owmVals,
-    pct,
-    buckets: pct.map(bucketFromPct)
-  };
-}
-
-async function refreshAll(){
-  const keys = Object.keys(CENTROIDS);
-  await Promise.all(keys.map(loadRegion));
-  // Derived Rajasthan = per-hour max of W/E
-  const wr = DATA["West Rajasthan"], er = DATA["East Rajasthan"];
-  const len = Math.min(wr.pct.length, er.pct.length);
-  const rz = new Array(len).fill(0).map((_,i)=> Math.max(wr.pct[i], er.pct[i]));
-  DATA["Rajasthan"] = {
-    times: DATA["Punjab"].times.slice(0,len),
-    pct: rz,
-    buckets: rz.map(bucketFromPct)
-  };
-}
-
-function repaintAll(){
-  setHourLabel();
-  colorMapForHour();
-  repaintCharts();
-}
-
-document.addEventListener("DOMContentLoaded", async ()=>{
-  updateNowIST(); setInterval(updateNowIST, 60000);
-  buildCloudTable();
-  await drawMap();
-
-  // first load
-  try{ await refreshAll(); }catch(e){
+    const geo = await fetchFirst(geoUrlsPunjab);
+    features = (geo.type === "Topology")
+      ? topojson.feature(geo, geo.objects[Object.keys(geo.objects)[0]]).features
+      : (geo.features || []);
+  }catch(e){
     console.error(e);
-    alert("Could not load hourly data. If you added ?owm=… and it still fails, remove it to use Open-Meteo only.");
+    svg.append("text").attr("x",12).attr("y",24).attr("font-weight",700).text("Punjab map not found");
     return;
   }
-  repaintAll();
+  if (!features.length){ svg.append("text").attr("x",12).attr("y",24).text("No features"); return; }
 
-  // controls
-  const slider = document.getElementById("hourSlider");
-  slider.addEventListener("input", e=>{ HOUR_IDX = +e.target.value; repaintAll(); });
+  const districtKey = detectDistrictKey(features[0].properties || {});
+  const fc = { type:"FeatureCollection", features };
 
-  document.getElementById("btn24").addEventListener("click", ()=>{ VIEW="24"; repaintCharts(); });
-  document.getElementById("btn48").addEventListener("click", ()=>{ VIEW="48"; repaintCharts(); });
-  document.getElementById("btnAll").addEventListener("click", ()=>{ VIEW="all"; repaintCharts(); });
+  mapProjection = d3.geoMercator().fitExtent([[10,10],[850,570]], fc);
+  const path = d3.geoPath(mapProjection);
 
-  document.getElementById("regionSelect").addEventListener("change", e=>{
-    REGION = e.target.value; repaintAll();
-  });
+  // base layer
+  const g = svg.append("g").attr("class","districts");
+  const tooltip = d3.select("body")
+    .append("div").attr("class","map-tooltip")
+    .style("position","fixed").style("z-index",50).style("opacity",0)
+    .style("background","rgba(255,255,255,.95)").style("border","1px solid #e5e7eb")
+    .style("padding","6px 8px").style("border-radius","8px").style("font", "12px system-ui");
 
-  document.getElementById("btnRefresh").addEventListener("click", async ()=>{
-    document.getElementById("btnRefresh").disabled = true;
-    try{ await refreshAll(); repaintAll(); } finally { document.getElementById("btnRefresh").disabled = false; }
-  });
+  g.selectAll("path").data(features).join("path")
+    .attr("d", path)
+    .attr("fill", "#e5f2ff")
+    .attr("stroke", "#666")
+    .attr("stroke-width", 0.8)
+    .style("cursor","pointer")
+    .on("pointerenter", function(){ d3.select(this).raise().attr("stroke-width",1.8); })
+    .on("pointermove", (ev, d)=>{
+      tooltip.style("opacity",1).style("left",(ev.clientX+10)+"px").style("top",(ev.clientY+10)+"px")
+        .text(d.properties[districtKey]);
+    })
+    .on("pointerleave", function(){ d3.select(this).attr("stroke-width",0.8); tooltip.style("opacity",0); })
+    .on("click", async (ev, d) => {
+      const name = d.properties[districtKey];
+      // geographic centroid for fetch (lon,lat)
+      const [lon, lat] = d3.geoCentroid(d);   // returns [λ, φ]
+      selectedDistrict = name;
+      selectedLatLon   = { lat, lon };
+      await ensureDistrictDataAndPlot(name, lat, lon);
+    });
 
-  document.getElementById("satBtn").addEventListener("click", ()=>{
-    window.open("https://zoom.earth/#view=22.5,79.0,5z/layers=labels,clouds","_blank","noopener");
-  });
+  drawLabels(svg, features, path, districtKey);
+}
 
-  // auto refresh every hour
-  setInterval(async ()=>{ await refreshAll(); repaintAll(); }, 60*60*1000);
+/* ---------- interactions ---------- */
+async function ensureDistrictDataAndPlot(name, lat, lon){
+  if (!hourlyStore.has(name)) {
+    try {
+      const { times, clouds, ghi } = await fetchHourly(lat, lon);
+      hourlyStore.set(name, { times, clouds, ghi });
+    } catch (e) {
+      console.warn("Fetch failed:", name, e);
+      return;
+    }
+  }
+  const { times, clouds, ghi } = hourlyStore.get(name);
+  setCharts(times, clouds, ghi);
+
+  const titleEl = document.getElementById("districtTitle");
+  if (titleEl) titleEl.textContent = `${name} — next 48 h (daylight only)`;
+}
+
+/* ---------- init ---------- */
+document.addEventListener("DOMContentLoaded", async () => {
+  // 1) Map
+  await drawPunjabMap();
+
+  // 2) Default selection: center of Punjab (if user hasn’t clicked)
+  if (!selectedDistrict) {
+    const fallback = { name: "Punjab", lat: 31.0, lon: 75.3 };
+    await ensureDistrictDataAndPlot(fallback.name, fallback.lat, fallback.lon);
+  }
+
+  // 3) Refresh button (if present)
+  const btn = document.getElementById("refreshNow");
+  if (btn) {
+    btn.addEventListener("click", async () => {
+      if (!selectedLatLon) return;
+      hourlyStore.delete(selectedDistrict); // force refetch
+      await ensureDistrictDataAndPlot(selectedDistrict, selectedLatLon.lat, selectedLatLon.lon);
+    });
+  }
 });
