@@ -24,6 +24,7 @@
     .axis path,.axis line{ stroke:#9ca3af }
     .legend-item { display:flex; align-items:center; gap:.5rem; font-size:.8rem; }
     .legend-swatch { width:14px; height:14px; border-radius:3px; border:1px solid rgba(0,0,0,.25); }
+    #indiaMapHourly { display:block; margin:0 auto; }
   </style>
 
   <!-- D3 + TopoJSON -->
@@ -48,13 +49,11 @@
   </nav>
 
   <main class="max-w-6xl mx-auto px-4 py-8">
-    <!-- Header (clean – controls moved into map card) -->
-    <header class="bg-white shadow-soft rounded-3xl p-6 mb-8">
+    <!-- Header -->
+    <header class="bg-white shadow-soft rounded-3xl p-6 mb-6">
       <h1 class="text-3xl md:text-4xl font-extrabold gradient-text">Hourly Cloud Cover (Ensemble, next 48 h)</h1>
       <p class="text-gray-500 mt-1">IST now: <span id="now-ist">—</span></p>
-      <p class="text-xs text-gray-500 mt-2">
-        Ensemble: Open-Meteo (always) + OpenWeatherMap (optional &mdash; add <code>?owm=YOUR_API_KEY</code> to the URL).
-      </p>
+      <p id="status" class="text-xs text-amber-600 mt-2 hidden"></p>
     </header>
 
     <!-- Cloud Cover Classification -->
@@ -112,7 +111,10 @@
 
         <!-- Bigger map -->
         <div class="relative">
-          <svg id="indiaMapHourly" viewBox="0 0 860 620" class="w-full h-[560px] rounded-2xl bg-gray-50 border border-gray-100"></svg>
+          <svg id="indiaMapHourly"
+               viewBox="0 0 860 620"
+               preserveAspectRatio="xMidYMid meet"
+               class="w-full h-[560px] rounded-2xl bg-gray-50 border border-gray-100"></svg>
 
           <!-- Legend -->
           <div id="mapLegend" class="absolute left-3 bottom-3 bg-white/90 backdrop-blur rounded-xl p-3 shadow-sm space-y-1"></div>
