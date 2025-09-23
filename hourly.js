@@ -1,27 +1,15 @@
-/* ===== Cloud Bulletin — HOURLY (India → Punjab; table + legend) =====
- * - Uses the same map fallbacks/patterns as daily.js
- * - Builds the Cloud Classification table from window.cloudRows (data.js)
- * - India map (bigger) with legend; click Punjab → Punjab districts map
- * - Back button; click a district → daylight-only (04–19 IST) charts
- * - Pure D3 (no Chart.js). Creates missing containers automatically.
- */
+/* ===== Cloud Bulletin — HOURLY (India → Punjab; table, legend, charts) ===== */
 
-/* --- sizes (slightly taller) --- */
-const W = 860, H = 520, PAD = 18;
-
-/* --- keys (match daily.js style) --- */
-let STATE_KEY = "ST_NM";
+const W = 860, H = 520, PAD = 18;          // bigger map
+let STATE_KEY = "ST_NM";                   // detected from data
 let NAME_KEY  = "name";
 
-/* --- daylight & forecast params --- */
 const IST_TZ = "Asia/Kolkata";
-const DAYLIGHT_START = 4;
-const DAYLIGHT_END   = 19;
-const MAX_HOURS      = 48;
+const DAYLIGHT_START = 4, DAYLIGHT_END = 19;
+const MAX_HOURS = 48;
 
-/* --- layout targets --- */
 const LAYOUT = {
-  mapWrapSel:  "#hourlyMapWrap",
+  mapWrapSel:  "#hourlyMapWrap",  // parent for maps
   indiaSvgId:  "indiaMapHourly",
   punjabSvgId: "punjabMapHourly",
   backBtnId:   "mapBackBtn",
@@ -32,7 +20,7 @@ const LAYOUT = {
   cloudTableId:"cloudTable"
 };
 
-/* ========== small helpers ========== */
+/* -------------------- helpers -------------------- */
 function q(sel){ return document.querySelector(sel); }
 function ensureEl({ id, tag="div", parent=null, className="" }){
   let el = document.getElementById(id);
@@ -41,6 +29,7 @@ function ensureEl({ id, tag="div", parent=null, className="" }){
 }
 function pickParent(selector){ return selector ? (q(selector) || document.body) : document.body; }
 function norm(s){ return String(s||"").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g,"").replace(/\s*&\s*/g," and ").replace(/\s*\([^)]*\)\s*/g," ").replace(/[^a-z0-9]+/g," ").replace(/\s+/g," ").trim(); }
+
 function detectKeys(features){
   const sKeys = ["ST_NM","st_nm","STATE","STATE_UT","NAME_1","state_name","State"];
   const dKeys = ["DISTRICT","name","NAME_2","Name","district","dist_name"];
@@ -56,7 +45,7 @@ function pickProjection(fc){
                 : d3.geoIdentity().reflectY(true).fitExtent([[PAD,PAD],[W-PAD,H-PAD]], fc);
 }
 
-/* ========== classification table (from data.js) ========== */
+/* -------------------- classification table -------------------- */
 function buildCloudTable(){
   const table = document.getElementById(LAYOUT.cloudTableId);
   if (!table) return;
@@ -67,30 +56,40 @@ function buildCloudTable(){
   const rows = window.cloudRows     || [];
   rows.forEach((r, i) => {
     const tr = document.createElement("tr");
-    tr.style.background = pal[r.label] || "#fff";
     tr.innerHTML = `
       <td>${i+1}</td>
       <td>${r.cover}</td>
-      <td><strong>${r.label}</strong></td>
+      <td><span class="inline-block w-3 h-3 mr-2 align-middle" style="background:${pal[r.label] || "#eee"};border:1px solid #9ca3af;border-radius:2px"></span><strong>${r.label}</strong></td>
       <td>${r.type}</td>
     `;
     tbody.appendChild(tr);
   });
 }
 
-/* ========== legend ========== */
+/* -------------------- legend (Index) -------------------- */
 function drawLegend(svg, title="Index — Day 1"){
   svg.selectAll(`.${LAYOUT.legendCls}`).remove();
-  const pal = window.forecastColors || {};
+  const pal = window.forecastColors || {
+    "Clear Sky":"#A7D8EB",
+    "Low Cloud Cover":"#C4E17F",
+    "Medium Cloud Cover":"#FFF952",
+    "High Cloud Cover":"#E69536",
+    "Overcast Cloud Cover":"#FF4D4D"
+  };
   const labels = window.forecastOptions || Object.keys(pal);
 
   const pad=10, sw=18, gap=18, width=210;
   const height = pad + 18 + labels.length*gap + 44;
 
-  const g = svg.append("g").attr("class", LAYOUT.legendCls).attr("transform", `translate(${W - width - 14}, ${14})`);
-  g.append("rect").attr("width",width).attr("height",height).attr("rx",12).attr("ry",12)
+  const g = svg.append("g").attr("class", LAYOUT.legendCls)
+    .attr("transform", `translate(${W - width - 14}, ${14})`);
+
+  g.append("rect").attr("width",width).attr("height",height)
+    .attr("rx",12).attr("ry",12)
     .attr("fill","rgba(255,255,255,0.95)").attr("stroke","#d1d5db");
-  g.append("text").attr("x",pad).attr("y",pad+14).attr("font-weight",800).attr("font-size",13).text(title);
+
+  g.append("text").attr("x",pad).attr("y",pad+14)
+    .attr("font-weight",800).attr("font-size",13).text(title);
 
   labels.forEach((lab,i)=>{
     const y = pad + 28 + i*gap;
@@ -99,30 +98,30 @@ function drawLegend(svg, title="Index — Day 1"){
     g.append("text").attr("x",pad+sw+8).attr("y",y-2).attr("font-size",12).text(lab);
   });
 
-  // “View satellite” (opens new tab)
+  // View satellite
   const btnW = width - pad*2, btnH=28, btnY = height - pad - btnH;
-  const btn = g.append("g").style("cursor","pointer").on("click",()=>window.open("https://zoom.earth/#view=22.5,79.0,5z/layers=labels,clouds","_blank","noopener"));
-  btn.append("rect").attr("x",pad).attr("y",btnY).attr("width",btnW).attr("height",btnH).attr("rx",8).attr("ry",8).attr("fill","#2563eb");
-  btn.append("text").attr("x",pad+btnW/2).attr("y",btnY+btnH/2+4).attr("text-anchor","middle").attr("font-size",12).attr("font-weight",700).attr("fill","#fff").text("View satellite");
+  const btn = g.append("g").style("cursor","pointer")
+    .on("click",()=>window.open("https://zoom.earth/#view=22.5,79.0,5z/layers=labels,clouds","_blank","noopener"));
+  btn.append("rect").attr("x",pad).attr("y",btnY).attr("width",btnW).attr("height",btnH)
+    .attr("rx",8).attr("ry",8).attr("fill","#2563eb");
+  btn.append("text").attr("x",pad+btnW/2).attr("y",btnY+btnH/2+4)
+    .attr("text-anchor","middle").attr("font-size",12).attr("font-weight",700).attr("fill","#fff")
+    .text("View satellite");
 }
 
-/* ========== GeoJSON fallbacks (mirrors daily) ========== */
-// India subdivisions (same list you use on daily)
+/* -------------------- data sources (no local 404s) -------------------- */
+// India subdivisions (same spirit as daily.js)
 const INDIA_SUBDIV_URLS = [
-  "indian_met_zones.geojson",
-  "assets/indian_met_zones.geojson",
-  "bulletin_version_2/indian_met_zones.geojson",
   "https://rimtin.github.io/bulletin_version_2/indian_met_zones.geojson",
   "https://rimtin.github.io/weather_bulletin/indian_met_zones.geojson",
   "https://raw.githubusercontent.com/rimtin/weather_bulletin/main/indian_met_zones.geojson",
   "https://cdn.jsdelivr.net/gh/rimtin/weather_bulletin@main/indian_met_zones.geojson"
 ];
-// Punjab districts: include a **reliable jsDelivr** and India-wide files to filter
+// Punjab districts: CDNs only; we filter India-wide to Punjab
 const PUNJAB_DISTRICT_URLS = [
-  "assets/punjab_districts.geojson",
-  "punjab_districts.geojson",
-  "https://cdn.jsdelivr.net/gh/udit-001/india-maps-data@main/geojson/states/punjab.geojson",
-  "https://cdn.jsdelivr.net/gh/udit-001/india-maps-data@main/geojson/india_districts.geojson"
+  "https://cdn.jsdelivr.net/gh/iamsahebgiri/India-Districts-GeoJSON@main/india_districts.geojson",
+  "https://cdn.jsdelivr.net/npm/vega-datasets@2.9.0/data/india-districts.json",
+  "https://raw.githubusercontent.com/iamsahebgiri/India-Districts-GeoJSON/refs/heads/main/india_districts.geojson"
 ];
 
 async function fetchFirst(urls){
@@ -144,7 +143,7 @@ function filterPunjab(features){
   if(!features?.length) return [];
   const STATE_KEYS = ["ST_NM","st_nm","STATE","state","state_name","State_Name","STATE_UT","NAME_1","stname"];
   const sKey = STATE_KEYS.find(k => k in (features[0]?.properties||{}));
-  if(!sKey) return features; // already Punjab-only file
+  if(!sKey) return features; // already Punjab-only
   return features.filter(f => String(f.properties?.[sKey]).toLowerCase()==="punjab");
 }
 function guessDistrictNameKey(props){
@@ -152,7 +151,7 @@ function guessDistrictNameKey(props){
   return c.find(k => k in (props||{})) || "name";
 }
 
-/* ========== INDIA MAP (default) ========== */
+/* -------------------- tooltip -------------------- */
 let tooltip;
 function ensureTip(){
   if(!tooltip){
@@ -164,6 +163,7 @@ function ensureTip(){
   return tooltip;
 }
 
+/* ==================== INDIA MAP (default) ==================== */
 async function drawIndia(){
   const holder = pickParent(LAYOUT.mapWrapSel);
   const svgEl = ensureEl({ id: LAYOUT.indiaSvgId, tag:"svg", parent: holder });
@@ -171,12 +171,10 @@ async function drawIndia(){
   svg.attr("viewBox",`0 0 ${W} ${H}`).style("width","100%").style("height","520px");
   svg.selectAll("*").remove();
 
-  // hatch pattern
   const defs = svg.append("defs");
   defs.append("pattern").attr("id","diagonalHatch").attr("patternUnits","userSpaceOnUse")
     .attr("width",6).attr("height",6).append("path").attr("d","M0,0 l6,6").attr("stroke","#999").attr("stroke-width",1);
 
-  // load features
   const geo = await fetchFirst(INDIA_SUBDIV_URLS);
   const feats = toFeatures(geo);
   if(!feats.length){ svg.append("text").attr("x",12).attr("y",24).attr("font-weight",700).text("Map data not found"); return; }
@@ -204,16 +202,22 @@ async function drawIndia(){
       if (norm(st)==="punjab") await drawPunjab();
     });
 
-  // color Punjab lightly to hint clickability
+  // Hint: color Punjab lightly
   paths.filter(d => norm(String(d.properties?.[STATE_KEY]||""))==="punjab")
     .attr("fill","#bfe3ff");
 
   drawLegend(svg, "Index — Day 1");
 }
 
-/* ========== PUNJAB MAP (detail) ========== */
+/* ==================== PUNJAB MAP (detail) ==================== */
+async function loadPunjabFeatures(){
+  const geo = await fetchFirst(PUNJAB_DISTRICT_URLS);
+  let feats = toFeatures(geo);
+  feats = filterPunjab(feats);
+  return feats;
+}
+
 async function drawPunjab(){
-  // toggle visibility
   const india = document.getElementById(LAYOUT.indiaSvgId);
   if (india) india.style.display = "none";
 
@@ -223,29 +227,19 @@ async function drawPunjab(){
   svg.attr("viewBox",`0 0 ${W} ${H}`).style("width","100%").style("height","520px");
   svg.selectAll("*").remove();
 
-  // Back button
   const back = ensureEl({ id: LAYOUT.backBtnId, tag:"button", parent: holder });
   back.textContent = "← Back to India";
-  Object.assign(back.style, { margin:"8px 0 6px", padding:"6px 12px", borderRadius:"9999px", border:"1px solid #d1d5db", background:"#fff" });
+  Object.assign(back.style,{ margin:"8px 0 6px", padding:"6px 12px", borderRadius:"9999px", border:"1px solid #d1d5db", background:"#fff" });
   back.onclick = () => { svg.style.display = "none"; if (india) india.style.display = "block"; back.remove(); };
 
-  // defs: sun gradient
+  // sun gradient
   const defs = svg.append("defs");
   const grad = defs.append("radialGradient").attr("id","sunGrad").attr("fx","30%").attr("fy","30%");
   grad.append("stop").attr("offset","0%").attr("stop-color","#fff7cc");
   grad.append("stop").attr("offset","60%").attr("stop-color","#ffb347");
   grad.append("stop").attr("offset","100%").attr("stop-color","#ff9800");
 
-  // load Punjab districts
-  let feats = [];
-  try{
-    let geo = await fetchFirst(PUNJAB_DISTRICT_URLS);
-    let all = toFeatures(geo);
-    if (all.length && !all.every(f => Object.values(f.properties||{}).some(v => String(v).toLowerCase()==="punjab"))) {
-      all = filterPunjab(all);
-    }
-    feats = all;
-  }catch(e){ console.error(e); }
+  const feats = await loadPunjabFeatures();
   if(!feats.length){ svg.append("text").attr("x",12).attr("y",24).attr("font-weight",700).text("Punjab districts not found"); return; }
 
   const nameKey = guessDistrictNameKey(feats[0]?.properties || {});
@@ -278,7 +272,7 @@ async function drawPunjab(){
   drawLegend(svg, "Index — Day 1");
 }
 
-/* ========== Open-Meteo + charts (daylight only) ========== */
+/* ==================== Open-Meteo + charts ==================== */
 async function fetchHourly(lat, lon){
   const url = new URL("https://api.open-meteo.com/v1/forecast");
   url.searchParams.set("latitude",  lat.toFixed(4));
@@ -289,6 +283,7 @@ async function fetchHourly(lat, lon){
   const r = await fetch(url.toString(), { cache:"no-store" });
   if(!r.ok) throw new Error("Open-Meteo "+r.status);
   const j = await r.json();
+
   const times  = (j.hourly?.time || []).slice(0, MAX_HOURS);
   const clouds = (j.hourly?.cloud_cover || []).slice(0, MAX_HOURS);
   const T=[], V=[];
@@ -302,7 +297,8 @@ async function fetchHourly(lat, lon){
 
 function drawLineChart({ holderId, labels, values, yMax, title="", unit="", width=520, height=260 }){
   const holder = ensureEl({ id: holderId, parent: pickParent("#rightCol") });
-  holder.innerHTML = ""; Object.assign(holder.style,{ background:"#fff", borderRadius:"12px", boxShadow:"0 10px 25px -5px rgba(0,0,0,.10), 0 10px 10px -5px rgba(0,0,0,.04)", padding:"10px" });
+  holder.innerHTML = "";
+  Object.assign(holder.style,{ background:"#fff", borderRadius:"12px", boxShadow:"0 10px 25px -5px rgba(0,0,0,.10), 0 10px 10px -5px rgba(0,0,0,.04)", padding:"10px" });
 
   const P={t:28,r:18,b:36,l:44};
   const svg=d3.select(holder).append("svg").attr("width",width).attr("height",height);
@@ -312,8 +308,8 @@ function drawLineChart({ holderId, labels, values, yMax, title="", unit="", widt
   const y=d3.scaleLinear().domain([0,yMax]).nice().range([height-P.b,P.t+6]);
 
   svg.append("g").attr("transform",`translate(0,${height-P.b})`)
-    .call(d3.axisBottom(x).tickValues(x.domain().filter(i=>i%2===0)).tickFormat(i=>new Date(labels[i]).toLocaleTimeString("en-IN",{hour:"numeric"})));
-
+    .call(d3.axisBottom(x).tickValues(x.domain().filter(i=>i%2===0))
+      .tickFormat(i=>new Date(labels[i]).toLocaleTimeString("en-IN",{hour:"numeric"})));
   svg.append("g").attr("transform",`translate(${P.l},0)`).call(d3.axisLeft(y).ticks(5));
 
   const line=d3.line().x((d,i)=>x(i)).y(d=>y(d));
@@ -331,18 +327,18 @@ async function ensureDistrictAndPlot(name, lat, lon){
   }catch(e){ console.warn("Fetch failed:", name, e); }
 }
 
-/* ========== init ========== */
+/* ==================== init ==================== */
 document.addEventListener("DOMContentLoaded", async () => {
-  // 0) Build the Cloud Cover Classification table (pulls from data.js)
+  // Build the Cloud Classification table (uses data.js)
   buildCloudTable();
 
-  // 1) Ensure chart holders exist
+  // Ensure chart holders exist
   ensureEl({ id: LAYOUT.cloudDivId, parent: pickParent("#rightCol") });
   ensureEl({ id: LAYOUT.ghiDivId,   parent: pickParent("#rightCol") });
 
-  // 2) Draw India map (larger) with legend; click → Punjab
+  // Draw India map (legend included)
   await drawIndia();
 
-  // 3) Preload Punjab center so charts aren’t empty
+  // Preload Punjab center so charts aren’t empty
   await ensureDistrictAndPlot("Punjab", 31.0, 75.3);
 });
