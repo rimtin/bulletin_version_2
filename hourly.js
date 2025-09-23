@@ -1,17 +1,17 @@
-// === Map + table app (legend + satellite + hourly Day1/Day2 + Punjab panel + IST rollover, STATIC per day) ===
+// === Single-map app (Day 1) + Punjab district panel + daylight charts ===
 const W = 860, H = 580, PAD = 18;
 const MATCH_KEY = "ST_NM";
 let STATE_KEY = "ST_NM";
 let NAME_KEY  = "name";
 
-// per-map stores
-const indexByGroup  = { "#indiaMapDay1": new Map(), "#indiaMapDay2": new Map() };
-const groupCentroid = { "#indiaMapDay1": {}, "#indiaMapDay2": {} };
+// Single map id
+const MAP_IDS = ["#indiaMapDay1"];
+const indexByGroup  = { "#indiaMapDay1": new Map() };
+const groupCentroid = { "#indiaMapDay1": {} };
 
-/* ---------------- Satellite links for legend button ---------------- */
+/* ---------------- Satellite link ---------------- */
 const SATELLITE_LINKS = {
-  "#indiaMapDay1": "https://zoom.earth/#view=22.5,79.0,5z/layers=labels,clouds",
-  "#indiaMapDay2": "https://zoom.earth/#view=22.5,79.0,5z/layers=labels,clouds"
+  "#indiaMapDay1": "https://zoom.earth/#view=22.5,79.0,5z/layers=labels,clouds"
 };
 
 /* ---------------- DAILY auto-fill (Open-Meteo) -------------------- */
@@ -37,7 +37,6 @@ const BUCKET_RANK = {
 };
 
 /* --------- HOURLY → Day1/Day2 from NOW (IST) --------- */
-// cache-busted so the FIRST fetch of the day is fresh, then we keep it
 async function fetchHourlyCloudBuckets(lat, lon){
   const url = `https://api.open-meteo.com/v1/forecast`+
               `?latitude=${lat}&longitude=${lon}`+
@@ -270,7 +269,7 @@ function drawLegendWithButton(svg, title, linkUrl){
     .text("View satellite");
 }
 
-/* ---------------- Draw one map ---------------- */
+/* ---------------- Draw the (only) map ---------------- */
 async function drawMap(svgId){
   const svg = d3.select(svgId);
   svg.attr("viewBox",`0 0 ${W} ${H}`).style("width","100%").style("height",`${H}px`);
@@ -353,17 +352,8 @@ async function drawMap(svgId){
     if (Number.isFinite(x) && Number.isFinite(y)) groupCentroid[svgId][key] = [x,y];
   });
 
-  if (svgId === "#indiaMapDay2"){
-    buildFixedTable();
-    document.querySelectorAll("#forecast-table-body select").forEach(sel=>{
-      if (sel.options.length && sel.selectedIndex < 0) sel.selectedIndex = 0;
-    });
-    await autoFillDailyFromOpenMeteo().catch(e=>console.error(e));
-    updateMapColors();
-  }
-
-  const title = (svgId === "#indiaMapDay1") ? "Index — Day 1" : "Index — Day 2";
-  drawLegendWithButton(svg, title, SATELLITE_LINKS[svgId] || SATELLITE_LINKS["#indiaMapDay1"]);
+  // Always "Index — Day 1"
+  drawLegendWithButton(svg, "Index — Day 1", SATELLITE_LINKS["#indiaMapDay1"]);
 }
 
 /* ---------------- Forecast table ---------------- */
@@ -428,7 +418,7 @@ function buildFixedTable(){
 /* ---------------- Hover highlight ---------------- */
 function highlight(label, on){
   const key = norm(label);
-  ["#indiaMapDay1","#indiaMapDay2"].forEach(svgId=>{
+  MAP_IDS.forEach(svgId=>{
     const nodes = indexByGroup[svgId]?.get(key);
     if (!nodes) return;
     nodes.forEach(n => {
@@ -463,8 +453,8 @@ function updateMapColors(){
     return { key: norm(subdiv), day1, day2, raw: subdiv };
   });
 
-  ["#indiaMapDay1","#indiaMapDay2"].forEach((svgId, idx) => {
-    const dayKey = idx === 0 ? "day1" : "day2";
+  MAP_IDS.forEach((svgId) => {
+    const dayKey = "day1"; // single map shows Day 1
     const svg = d3.select(svgId);
     const idxMap = indexByGroup[svgId] || new Map();
 
@@ -503,7 +493,7 @@ function updateMapColors(){
 
 /* ---------------- Punjab District Panel (Daily, STATIC) ---------------- */
 
-// UPDATED: Punjab districts sources
+// Punjab districts sources (Vega + Datameet)
 const PUNJAB_DISTRICT_URLS = [
   "https://vega.github.io/vega-datasets/data/india-districts.json",
   "https://raw.githubusercontent.com/vega/vega-datasets/main/data/india-districts.json",
@@ -512,7 +502,6 @@ const PUNJAB_DISTRICT_URLS = [
 ];
 
 async function loadPunjabFeatures() {
-  // Use the generic fetchFirst and normalize both TopoJSON & GeoJSON
   const geo = await fetchFirst(PUNJAB_DISTRICT_URLS);
   if (!geo) return [];
 
@@ -525,7 +514,6 @@ async function loadPunjabFeatures() {
     features = geo.features || [];
   }
 
-  // Filter to Punjab by common state keys; if none, assume already Punjab-only
   const STATE_KEYS = ["ST_NM","st_nm","STATE","state","state_name","State_Name","STATE_UT","NAME_1","stname"];
   const probe = features[0]?.properties || {};
   const sKey = STATE_KEYS.find(k => k in probe);
@@ -538,13 +526,12 @@ async function loadPunjabFeatures() {
 function openDistrictPanel(){ document.getElementById("districtPanel")?.classList.remove("hidden"); }
 function closeDistrictPanel(){ document.getElementById("districtPanel")?.classList.add("hidden"); }
 
-/* Back button UX: hide India maps while panel is open */
+/* Back button UX: hide India map while panel is open */
 function showPunjabPanelAndHideIndia(){
   const d = document.getElementById("districtPanel");
   if (d) d.classList.remove("hidden");
 
   document.getElementById("indiaMapDay1")?.classList.add("hidden");
-  document.getElementById("indiaMapDay2")?.classList.add("hidden");
 
   let back = document.getElementById("dp-back");
   if (!back){
@@ -556,7 +543,6 @@ function showPunjabPanelAndHideIndia(){
     back.addEventListener("click", ()=>{
       d.classList.add("hidden");
       document.getElementById("indiaMapDay1")?.classList.remove("hidden");
-      document.getElementById("indiaMapDay2")?.classList.remove("hidden");
     });
   }
 }
@@ -565,7 +551,6 @@ document.addEventListener("click", e=>{
   if (e.target?.id==="dp-close"){
     closeDistrictPanel();
     document.getElementById("indiaMapDay1")?.classList.remove("hidden");
-    document.getElementById("indiaMapDay2")?.classList.remove("hidden");
   }
 });
 document.addEventListener("change", e=>{ if (e.target?.name==="dp-day") openPunjabDistrictView(e.target.value); });
@@ -603,19 +588,16 @@ async function computePunjabLabelsIfNeeded(feats, keyName){
   }
 }
 
-// Use loadPunjabFeatures() (no local fetch/404s)
 async function openPunjabDistrictView(dayKey){
   const svg = d3.select("#punjabDistrictMap"); if (svg.empty()) return;
   svg.selectAll("*").remove();
 
-  // Load + filter using the robust loader
   const feats = await loadPunjabFeatures();
   if (!feats.length) throw new Error("No district features.");
 
   const sampleProps = feats[0]?.properties || {};
   const DIST_KEY = findDistrictNameKey(sampleProps);
 
-  // compute & cache labels ONLY if needed for today's date
   await computePunjabLabelsIfNeeded(feats, DIST_KEY);
 
   const fc = { type:"FeatureCollection", features: feats };
@@ -662,7 +644,6 @@ async function openPunjabDistrictView(dayKey){
   const dayRadio = document.querySelector('input[name="dp-day"]:checked');
   const day = dayKey || (dayRadio ? dayRadio.value : "day1");
 
-  // Color districts from the CACHED labels
   for (const f of feats){
     const [x, y] = path.centroid(f);
     const labelNow = f.properties._labels?.[day];
@@ -713,13 +694,17 @@ function msUntilNextISTMidnight() {
 
 async function doDailyRefresh() {
   clearPunjabCache();                      // invalidate district cache
-  await autoFillDailyFromOpenMeteo().catch(() => {});
+  if (typeof autoFillDailyFromOpenMeteo === "function") {
+    await autoFillDailyFromOpenMeteo().catch(() => {});
+  } else if (typeof autoFillDaily === "function") {
+    await autoFillDaily().catch(() => {});
+  }
   updateMapColors();
 
   const panel = document.getElementById("districtPanel");
   if (panel && !panel.classList.contains("hidden")) {
     const day = document.querySelector('input[name="dp-day"]:checked')?.value || "day1";
-    await openPunjabDistrictView(day);     // recompute once for the new day
+    await openPunjabDistrictView(day);
   }
 }
 
@@ -729,10 +714,9 @@ function scheduleDailyRollover() {
 
   __rolloverTimer = setTimeout(async () => {
     await doDailyRefresh();
-    scheduleDailyRollover(); // schedule the next day
+    scheduleDailyRollover();
   }, msUntilNextISTMidnight() + 2000);
 
-  // Safety refresh every 6 hours (in case the tab slept through midnight)
   __periodicTimer = setInterval(doDailyRefresh, 6 * 60 * 60 * 1000);
 }
 
@@ -740,13 +724,24 @@ function scheduleDailyRollover() {
 function init(){
   if (typeof updateISTDate === "function") updateISTDate();
   buildCloudTable();
+
+  // Draw the only map
   drawMap("#indiaMapDay1");
-  drawMap("#indiaMapDay2");
-  scheduleDailyRollover(); // keep the page “daily”
+
+  // Build / fill the table and color the map
+  buildFixedTable();
+  if (typeof autoFillDailyFromOpenMeteo === "function") {
+    autoFillDailyFromOpenMeteo().catch(()=>{});
+  } else if (typeof autoFillDaily === "function") {
+    autoFillDaily().catch(()=>{});
+  }
+  updateMapColors();
+
+  scheduleDailyRollover();
 }
 document.addEventListener("DOMContentLoaded", init);
 
-/* --- (older helper kept for compat; unused if data-readonly="true") --- */
+/* --- (older helper kept for compat) --- */
 async function fetchHourlyCloud(lat, lon) {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=cloud_cover&forecast_hours=48&timezone=Asia%2FKolkata&_=${Date.now()}`;
   const r = await fetch(url, { cache: "no-store" });
