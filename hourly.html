@@ -15,22 +15,16 @@
     .shadow-soft { box-shadow: 0 10px 25px -5px rgba(0,0,0,.10), 0 10px 10px -5px rgba(0,0,0,.04); }
     .gradient-text { background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
       -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
-
-    /* Small, subtle select arrow */
-    select { appearance: none; -webkit-appearance: none; -moz-appearance: none; padding-right: 1.75rem; }
-    .select-wrap { position: relative; }
-    .select-wrap::after{
-      content:"▾"; position:absolute; right:.5rem; top:50%; transform:translateY(-50%);
-      font-size:12px; color:#111827; pointer-events:none; opacity:.7;
-    }
-
-    /* Map tooltip */
     .map-tooltip{
       position:fixed; z-index:9999; pointer-events:none; background:#fff; color:#000;
       border-radius:12px; padding:8px 10px; box-shadow:0 10px 20px rgba(0,0,0,.18), 0 2px 6px rgba(0,0,0,.12);
-      border:1px solid rgba(0,0,0,.18); font-size:13px; font-weight:700; line-height:1.2; max-width:220px; white-space:nowrap;
+      border:1px solid rgba(0,0,0,.18); font-size:13px; font-weight:700; line-height:1.2; white-space:nowrap;
     }
-    .map-legend text{ font-family: system-ui,-apple-system,Segoe UI,Inter,Roboto,Arial,sans-serif; }
+    .select-wrap { position: relative; }
+    .select-wrap select { appearance:none; padding-right:1.75rem; }
+    .select-wrap::after{ content:"▾"; position:absolute; right:.5rem; top:50%; transform:translateY(-50%); font-size:12px; opacity:.7; }
+    .axis text{ font-size:11px; fill:#111827 }
+    .axis path,.axis line{ stroke:#9ca3af }
   </style>
 
   <!-- D3 + TopoJSON -->
@@ -39,7 +33,6 @@
 </head>
 
 <body class="bg-gray-50 text-gray-800 min-h-screen">
-
   <!-- Nav -->
   <nav class="max-w-6xl mx-auto px-4 mt-6">
     <div class="bg-white shadow-soft rounded-2xl px-5 py-3 flex items-center justify-between">
@@ -56,21 +49,36 @@
   </nav>
 
   <main class="max-w-6xl mx-auto px-4 py-8">
-
     <!-- Header -->
     <header class="bg-white shadow-soft rounded-3xl p-6 mb-8">
       <div class="flex flex-col md:flex-row items-center justify-between gap-4">
         <div class="text-center md:text-left">
-          <h1 class="text-3xl md:text-4xl font-extrabold gradient-text">Hourly Cloud Cover (Next 48 h)</h1>
+          <h1 class="text-3xl md:text-4xl font-extrabold gradient-text">Hourly Cloud Cover (Ensemble, next 48h)</h1>
           <p class="text-gray-500 mt-1">IST now: <span id="now-ist">—</span></p>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-3">
+          <div class="select-wrap">
+            <select id="regionSelect" class="px-3 py-2 rounded-lg border border-gray-200 bg-white">
+              <option value="Punjab">Punjab</option>
+              <option value="West Rajasthan">West Rajasthan</option>
+              <option value="East Rajasthan">East Rajasthan</option>
+              <option value="Rajasthan">Rajasthan (W/E max)</option>
+            </select>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-sm text-gray-600">Hour:</label>
+            <input id="hourSlider" type="range" min="0" max="47" value="0" class="w-44">
+            <span id="hourLabel" class="text-sm text-gray-700">—</span>
+          </div>
           <button id="btn24" class="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 font-semibold">Next 24 h</button>
           <button id="btn48" class="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 font-semibold">Hours 25–48</button>
           <button id="btnAll" class="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 font-semibold">All 48 h</button>
           <button id="btnRefresh" class="px-3 py-2 rounded-lg text-white" style="background:linear-gradient(135deg,#667eea,#764ba2)">Refresh</button>
         </div>
       </div>
+      <p class="text-xs text-gray-500 mt-2">
+        Ensemble sources: Open-Meteo (always) + OpenWeatherMap (optional – add <code>?owm=YOUR_API_KEY</code> to the URL). We’ll replace the GHI proxy with a proper model later.
+      </p>
     </header>
 
     <!-- Cloud Cover Classification -->
@@ -92,365 +100,35 @@
       <p class="mt-3 text-gray-500 text-sm"><strong>Note:</strong> This terminology is for local use only.</p>
     </section>
 
-    <!-- Hourly table -->
-    <section class="bg-white shadow-soft rounded-3xl p-6 mb-8">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-xl font-bold">Sub-Division Hourly (48 rows)</h3>
-        <div class="flex items-center gap-3">
-          <div class="select-wrap">
-            <select id="zoneSelect" class="px-3 py-2 rounded-lg border border-gray-200 bg-white">
-              <option value="all">Show: All columns</option>
-              <option value="Punjab">Punjab only</option>
-              <option value="West Rajasthan">West Rajasthan only</option>
-              <option value="East Rajasthan">East Rajasthan only</option>
-              <option value="Rajasthan">Rajasthan (W/E max)</option>
-            </select>
-          </div>
-          <div class="flex items-center gap-2">
-            <label class="text-sm text-gray-600">Map hour:</label>
-            <input id="hourSlider" type="range" min="0" max="47" value="0" class="w-40">
-            <span id="hourLabel" class="text-sm text-gray-700">—</span>
-          </div>
+    <!-- Main layout: Map (left) + Charts (right) -->
+    <section class="grid md:grid-cols-2 gap-6">
+      <!-- Map -->
+      <div class="bg-white shadow-soft rounded-3xl p-4">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-lg font-bold">Map — selected hour</h3>
+          <button id="satBtn" class="px-3 py-2 rounded-lg text-white" style="background:#2563eb">View satellite</button>
+        </div>
+        <svg id="indiaMapHourly" viewBox="0 0 860 580" class="w-full h-[420px] rounded-2xl bg-gray-50 border border-gray-100"></svg>
+      </div>
+
+      <!-- Charts -->
+      <div class="space-y-6">
+        <div class="bg-white shadow-soft rounded-3xl p-4">
+          <h3 class="text-lg font-bold mb-2">Hourly Cloud % (ensemble)</h3>
+          <svg id="cloudChart" viewBox="0 0 600 300" class="w-full h-[240px]"></svg>
+          <div id="sourceTags" class="text-xs text-gray-500 mt-1"></div>
+        </div>
+        <div class="bg-white shadow-soft rounded-3xl p-4">
+          <h3 class="text-lg font-bold mb-2">GHI (proxy) — daylight only</h3>
+          <svg id="ghiChart" viewBox="0 0 600 300" class="w-full h-[240px]"></svg>
+          <p class="text-[11px] text-gray-500 mt-1">Placeholder: GHI≈(1−cloud%)×950 (0 at night). We’ll replace with a proper clear-sky + cloud attenuation model later.</p>
         </div>
       </div>
-
-      <div class="overflow-x-auto">
-        <table class="min-w-full text-sm">
-          <thead class="bg-gray-50">
-            <tr>
-              <th class="text-left px-3 py-2">S. No.</th>
-              <th class="text-left px-3 py-2">Hour (IST)</th>
-              <th class="text-left px-3 py-2">Punjab</th>
-              <th class="text-left px-3 py-2">West Rajasthan</th>
-              <th class="text-left px-3 py-2">East Rajasthan</th>
-              <th class="text-left px-3 py-2">Rajasthan (W/E max)</th>
-            </tr>
-          </thead>
-          <tbody id="hourly-body" class="text-gray-800"></tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- Map -->
-    <section class="bg-white shadow-soft rounded-3xl p-6 mb-12">
-      <div class="flex items-center justify-between mb-3">
-        <h3 class="text-xl font-bold">Hourly Map — Selected Hour</h3>
-        <button id="satBtn" class="px-3 py-2 rounded-lg text-white" style="background:#2563eb">View satellite</button>
-      </div>
-      <svg id="indiaMapHourly" viewBox="0 0 860 580" class="w-full h-[420px] rounded-2xl bg-gray-50 border border-gray-100"></svg>
     </section>
   </main>
 
-  <script>
-    /* ====== Config ====== */
-    const CENTROIDS = {
-      "Punjab":         { lat: 30.84284696845263, lon: 75.41854251284677 },
-      "West Rajasthan": { lat: 27.1589259099715,  lon: 72.70218563309521 },
-      "East Rajasthan": { lat: 25.810727217600284,lon: 75.39163711411086 }
-    };
-    const COLORS = {
-      "Clear Sky":            "#66CCFF",
-      "Low Cloud Cover":      "#57E66D",
-      "Medium Cloud Cover":   "#FFF500",
-      "High Cloud Cover":     "#FF8A00",
-      "Overcast Cloud Cover": "#FF0000"
-    };
-    const ICONS = { "Clear Sky":"☀️","Low Cloud Cover":"🌤️","Medium Cloud Cover":"⛅","High Cloud Cover":"🌥️","Overcast Cloud Cover":"☁️" };
-
-    function bucketFromPct(p){
-      if (p < 10) return "Clear Sky";
-      if (p < 30) return "Low Cloud Cover";
-      if (p < 50) return "Medium Cloud Cover";
-      if (p < 75) return "High Cloud Cover";
-      return "Overcast Cloud Cover";
-    }
-    const CLASS_ROWS = [
-      { cover: "0–10 %",  label: "Clear Sky",            type: "No Cloud" },
-      { cover: "10–30 %", label: "Low Cloud Cover",      type: "Few Clouds" },
-      { cover: "30–50 %", label: "Medium Cloud Cover",   type: "Scattered/Partly Cloudy" },
-      { cover: "50–75 %", label: "High Cloud Cover",     type: "Broken/Mostly Cloudy" },
-      { cover: "75–100 %",label: "Overcast Cloud Cover", type: "Cloudy/Overcast" }
-    ];
-
-    /* ====== Open-Meteo fetch (with retries + helpful alert) ====== */
-    const buildOMUrl = (lat,lon) =>
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=cloud_cover&forecast_hours=48&timezone=Asia%2FKolkata`;
-
-    async function fetchHourly(lat, lon){
-      const url = buildOMUrl(lat, lon);
-      let lastErr;
-      for (let attempt=1; attempt<=3; attempt++){
-        try{
-          const r = await fetch(url, { cache: "no-store" });
-          if (!r.ok){
-            const txt = await r.text().catch(()=>"(no body)");
-            throw new Error(`HTTP ${r.status} ${r.statusText} — ${txt.slice(0,160)}`);
-          }
-          const j = await r.json();
-          const hours = j?.hourly?.time, vals = j?.hourly?.cloud_cover;
-          if (!Array.isArray(hours) || !Array.isArray(vals) || hours.length===0)
-            throw new Error("Malformed response (no hourly.time / hourly.cloud_cover)");
-          return { hours, vals };
-        }catch(e){
-          lastErr = e;
-          await new Promise(res=>setTimeout(res, 300*attempt));
-        }
-      }
-      throw lastErr || new Error("Open-Meteo fetch failed");
-    }
-
-    async function loadAll(){
-      const out = {};
-      await Promise.all(Object.entries(CENTROIDS).map(async ([name,{lat,lon}])=>{
-        const {hours, vals} = await fetchHourly(lat, lon);
-        out[name] = { hours, vals, buckets: vals.map(bucketFromPct) };
-      }));
-      // Derived Rajasthan (per-hour max of W/E)
-      const wr = out["West Rajasthan"], er = out["East Rajasthan"];
-      const hrs = wr.hours.length >= er.hours.length ? wr.hours : er.hours;
-      const rzVals = hrs.map((_,i)=> Math.max(wr.vals[i] ?? 0, er.vals[i] ?? 0));
-      out["Rajasthan"] = { hours: hrs, vals: rzVals, buckets: rzVals.map(bucketFromPct) };
-      return out;
-    }
-
-    /* ====== Tables ====== */
-    function fmtIST(s){
-      const d = new Date(s);
-      return d.toLocaleString("en-IN", {
-        hour: "2-digit", minute: "2-digit",
-        weekday: "short", day: "2-digit", month: "short",
-        hour12: true, timeZone: "Asia/Kolkata"
-      });
-    }
-    function tdBucket(pct, bucket){
-      return `<div class="flex items-center gap-2">
-        <span class="inline-block w-3 h-3 rounded" style="background:${COLORS[bucket] || "#eee"}"></span>
-        <span class="font-semibold">${Math.round(pct)}%</span>
-        <span class="text-xs">${bucket}</span>
-        <span>${ICONS[bucket] || ""}</span>
-      </div>`;
-    }
-    function paintTable(data, view="24", filter="all"){
-      const body = document.getElementById("hourly-body");
-      body.innerHTML = "";
-      let s = 0, e = 48;
-      if (view === "24") { s = 0; e = 24; }
-      if (view === "48") { s = 24; e = 48; }
-
-      const hours = data["Punjab"].hours.slice(s,e);
-      for (let i=0;i<hours.length;i++){
-        const idx = s+i;
-        const tr = document.createElement("tr");
-        tr.className = i%2 ? "bg-gray-50/50" : "";
-
-        const p  = data["Punjab"].vals[idx] ?? 0;
-        const pb = data["Punjab"].buckets[idx] ?? bucketFromPct(p);
-        const w  = data["West Rajasthan"].vals[idx] ?? 0;
-        const wb = data["West Rajasthan"].buckets[idx] ?? bucketFromPct(w);
-        const eR = data["East Rajasthan"].vals[idx] ?? 0;
-        const eb = data["East Rajasthan"].buckets[idx] ?? bucketFromPct(eR);
-        const rM = Math.max(w,eR);
-        const rb = bucketFromPct(rM);
-
-        let html = "";
-        html += `<td class="px-3 py-2">${idx+1}</td>`;
-        html += `<td class="px-3 py-2 whitespace-nowrap">${fmtIST(hours[i])}</td>`;
-        html += (filter==="all"||filter==="Punjab")          ? `<td class="px-3 py-2">${tdBucket(p,pb)}</td>` : `<td></td>`;
-        html += (filter==="all"||filter==="West Rajasthan")  ? `<td class="px-3 py-2">${tdBucket(w,wb)}</td>` : `<td></td>`;
-        html += (filter==="all"||filter==="East Rajasthan")  ? `<td class="px-3 py-2">${tdBucket(eR,eb)}</td>` : `<td></td>`;
-        html += (filter==="all"||filter==="Rajasthan")       ? `<td class="px-3 py-2">${tdBucket(rM,rb)}</td>` : `<td></td>`;
-
-        tr.innerHTML = html;
-        body.appendChild(tr);
-      }
-    }
-    function buildCloudTable(){
-      const tb = document.getElementById("cloudTbody");
-      tb.innerHTML = "";
-      CLASS_ROWS.forEach((r,i)=>{
-        const tr = document.createElement("tr");
-        tr.style.background = COLORS[r.label] || "#fff";
-        tr.innerHTML = `
-          <td class="px-3 py-2">${i+1}</td>
-          <td class="px-3 py-2">${r.cover}</td>
-          <td class="px-3 py-2 font-semibold">${r.label}</td>
-          <td class="px-3 py-2">${r.type}</td>
-        `;
-        tb.appendChild(tr);
-      });
-    }
-
-    /* ====== Map (color 3 sub-divisions at selected hour) ====== */
-    const W = 860, H = 580, PAD = 18;
-    const MATCH_KEY = "ST_NM";
-    let STATE_KEY = "ST_NM", NAME_KEY = "name";
-    const GEO_URLS = [
-      "indian_met_zones.geojson",
-      "assets/indian_met_zones.geojson",
-      "bulletin_version_2/indian_met_zones.geojson",
-      "https://rimtin.github.io/bulletin_version_2/indian_met_zones.geojson",
-      "https://rimtin.github.io/weather_bulletin/indian_met_zones.geojson",
-      "https://raw.githubusercontent.com/rimtin/weather_bulletin/main/indian_met_zones.geojson",
-      "https://cdn.jsdelivr.net/gh/rimtin/weather_bulletin@main/indian_met_zones.geojson"
-    ];
-    const norm = s => String(s||"").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g," ").replace(/\s+/g," ").trim();
-    let mapTooltip=null;
-    function ensureTooltip(){
-      if (!mapTooltip){
-        mapTooltip = d3.select("body").append("div").attr("class","map-tooltip").style("opacity",0);
-      }
-      return mapTooltip;
-    }
-    function detectKeys(features){
-      const sKeys=["ST_NM","st_nm","STATE","STATE_UT","NAME_1","state_name","State"];
-      const dKeys=["DISTRICT","name","NAME_2","Name","district","dist_name"];
-      const sample = features[0]?.properties||{};
-      STATE_KEY = sKeys.find(k=>k in sample)||STATE_KEY;
-      NAME_KEY  = dKeys.find(k=>k in sample)||NAME_KEY;
-    }
-    function pickProjection(fc){
-      const [[minX,minY],[maxX,maxY]]=d3.geoBounds(fc);
-      const w=maxX-minX, h=maxY-minY;
-      const lonlat = w<200&&h<120&&minX>=-180&&maxX<=180&&minY>=-90&&maxY<=90;
-      return lonlat ? d3.geoMercator().fitExtent([[PAD,PAD],[W-PAD,H-PAD]],fc)
-                    : d3.geoIdentity().reflectY(true).fitExtent([[PAD,PAD],[W-PAD,H-PAD]],fc);
-    }
-    async function fetchFirst(urls){
-      for (const url of urls){
-        try{ const r=await fetch(url,{cache:"no-cache"}); if(!r.ok) continue; return await r.json(); }catch{}
-      }
-      throw new Error("No GeoJSON found");
-    }
-
-    const indexByGroup = new Map();
-    let mapSvg=null, mapReady=false;
-
-    async function drawHourlyMap(){
-      mapReady=false;
-      const svg = d3.select("#indiaMapHourly");
-      svg.selectAll("*").remove(); mapSvg = svg;
-
-      const defs = svg.append("defs");
-      defs.append("pattern").attr("id","diag").attr("patternUnits","userSpaceOnUse").attr("width",6).attr("height",6)
-        .append("path").attr("d","M0,0 l6,6").attr("stroke","#9ca3af").attr("stroke-width",1);
-
-      let features=[];
-      try{
-        const geo = await fetchFirst(GEO_URLS);
-        features = (geo.type==="Topology")
-          ? topojson.feature(geo, geo.objects[Object.keys(geo.objects)[0]]).features
-          : (geo.features||[]);
-      }catch(e){ console.error(e); alert("Could not load GeoJSON"); return; }
-      if(!features.length) { alert("GeoJSON has 0 features"); return; }
-
-      detectKeys(features);
-      const fc = { type:"FeatureCollection", features };
-      const projection = pickProjection(fc);
-      const path = d3.geoPath(projection);
-
-      const fillLayer = svg.append("g").attr("class","fill-layer");
-      const paths = fillLayer.selectAll("path").data(features).join("path")
-        .attr("class","subdiv")
-        .attr("data-st", d => d.properties?.[STATE_KEY] ?? "")
-        .attr("data-d",  d => d.properties?.[NAME_KEY]  ?? "")
-        .attr("d", path)
-        .attr("fill", "url(#diag)")
-        .attr("stroke", "#666").attr("stroke-width", .7);
-
-      const allowed = new Set(["punjab","west rajasthan","east rajasthan"]);
-      const tt = ensureTooltip();
-      paths.on("pointermove", function(evt,d){
-        const raw = d?.properties?.[STATE_KEY] ?? "";
-        const key = norm(raw);
-        if (!allowed.has(key)) { tt.style("opacity",0); return; }
-        const pad=12, vw=innerWidth, vh=innerHeight, w=200, h=40;
-        let x=evt.clientX+pad, y=evt.clientY+pad; if(x+w>vw)x=vw-w-pad; if(y+h>vh)y=vh-h-pad;
-        tt.style("opacity",1).html(raw).style("left",x+"px").style("top",y+"px");
-      }).on("pointerleave", ()=>tt.style("opacity",0));
-
-      indexByGroup.clear();
-      paths.each(function(d){
-        const key = norm(String(d.properties?.[STATE_KEY] ?? ""));
-        if (!key) return;
-        (indexByGroup.get(key) || indexByGroup.set(key, []).get(key)).push(this);
-      });
-
-      mapReady=true;
-    }
-
-    function colorMapForHour(dataset, hourIdx){
-      if (!mapReady) return;
-      const svg = mapSvg;
-      svg.selectAll(".subdiv").attr("fill","url(#diag)");
-      const pairs = [
-        ["punjab",         dataset["Punjab"].buckets[hourIdx]],
-        ["west rajasthan", dataset["West Rajasthan"].buckets[hourIdx]],
-        ["east rajasthan", dataset["East Rajasthan"].buckets[hourIdx]]
-      ];
-      pairs.forEach(([key,bucket])=>{
-        const nodes = indexByGroup.get(key);
-        if (!nodes) return;
-        const c = COLORS[bucket] || "#eee";
-        nodes.forEach(n => n.setAttribute("fill", c));
-      });
-    }
-
-    /* ====== Page wiring ====== */
-    let CACHE=null, view="24", filter="all", hourIndex=0;
-
-    function updateNowIST(){
-      const now = new Date();
-      document.getElementById("now-ist").textContent =
-        now.toLocaleString("en-IN",{ timeZone:"Asia/Kolkata", hour:'2-digit', minute:'2-digit', weekday:'long', year:'numeric', month:'long', day:'numeric', hour12:true });
-    }
-    function updateHourLabel(data){
-      const s = data["Punjab"]?.hours?.[hourIndex];
-      document.getElementById("hourLabel").textContent = s ? fmtIST(s) : "—";
-    }
-    function repaint(){
-      if (!CACHE) return;
-      paintTable(CACHE, view, filter);
-      updateHourLabel(CACHE);
-      colorMapForHour(CACHE, hourIndex);
-    }
-
-    document.addEventListener("DOMContentLoaded", async ()=>{
-      updateNowIST(); setInterval(updateNowIST, 60000);
-      buildCloudTable();
-      await drawHourlyMap();
-
-      try{
-        CACHE = await loadAll();
-      }catch(e){
-        console.error("Open-Meteo fetch failed:", e);
-        const testURL = buildOMUrl(CENTROIDS["Punjab"].lat, CENTROIDS["Punjab"].lon);
-        alert(`Could not load hourly cloud cover from Open-Meteo.\n\nReason: ${e.message}\n\nTroubleshooting:\n• Click OK, then the browser address bar and try this test URL:\n${testURL}\n• If the link fails, your network or a browser extension is blocking api.open-meteo.com.`);
-        return;
-      }
-
-      // slider max based on payload (usually 48)
-      const maxIdx = (CACHE["Punjab"].hours.length || 48) - 1;
-      const slider = document.getElementById("hourSlider");
-      slider.max = String(maxIdx);
-
-      // initial UI
-      repaint();
-
-      // controls
-      document.getElementById("btn24").addEventListener("click", ()=>{ view="24"; repaint(); });
-      document.getElementById("btn48").addEventListener("click", ()=>{ view="48"; repaint(); });
-      document.getElementById("btnAll").addEventListener("click", ()=>{ view="all"; repaint(); });
-      document.getElementById("zoneSelect").addEventListener("change", (e)=>{ filter=e.target.value; repaint(); });
-      document.getElementById("btnRefresh").addEventListener("click", async ()=>{
-        try{ CACHE = await loadAll(); repaint(); }
-        catch(e){ console.error("Refresh failed:", e); alert(`Refresh failed: ${e.message}`); }
-      });
-      slider.addEventListener("input", e => { hourIndex = +e.target.value; updateHourLabel(CACHE); colorMapForHour(CACHE, hourIndex); });
-
-      document.getElementById("satBtn").addEventListener("click", ()=>{
-        window.open("https://zoom.earth/#view=22.5,79.0,5z/layers=labels,clouds","_blank","noopener");
-      });
-    });
-  </script>
+  <!-- Shared palette/icons + hourly logic -->
+  <script src="data.js"></script>
+  <script src="hourly.js"></script>
 </body>
 </html>
