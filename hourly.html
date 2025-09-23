@@ -48,12 +48,13 @@
   </nav>
 
   <main class="max-w-6xl mx-auto px-4 py-8">
-    <!-- Header (clean – controls moved into map card) -->
+    <!-- Header (clean) -->
     <header class="bg-white shadow-soft rounded-3xl p-6 mb-8">
       <h1 class="text-3xl md:text-4xl font-extrabold gradient-text">Hourly Cloud Cover (Ensemble, next 48 h)</h1>
       <p class="text-gray-500 mt-1">IST now: <span id="now-ist">—</span></p>
-      <p class="text-xs text-gray-500 mt-2">
-        Ensemble: Open-Meteo (always) + OpenWeatherMap (optional &mdash; add <code>?owm=YOUR_API_KEY</code> to the URL).
+      <p id="status" class="text-xs text-amber-600 mt-2 hidden"></p>
+      <p class="text-xs text-gray-500 mt-1">
+        Ensemble: Open-Meteo (always) + OpenWeatherMap (optional — add <code>?owm=YOUR_API_KEY</code> to the URL).
       </p>
     </header>
 
@@ -87,6 +88,7 @@
             </h3>
             <button id="btnBack" class="px-3 py-1.5 rounded-lg bg-gray-100 font-semibold hidden">⬅ Back to India</button>
           </div>
+          <!-- Controls kept in DOM but will be hidden by JS (wireframe clean) -->
           <div class="flex items-center gap-3 flex-wrap">
             <div class="flex items-center gap-2">
               <label class="text-sm text-gray-600">Region:</label>
@@ -115,7 +117,9 @@
           <svg id="indiaMapHourly" viewBox="0 0 860 620" class="w-full h-[560px] rounded-2xl bg-gray-50 border border-gray-100"></svg>
 
           <!-- Legend -->
-          <div id="mapLegend" class="absolute left-3 bottom-3 bg-white/90 backdrop-blur rounded-xl p-3 shadow-sm space-y-1"></div>
+          <div id="mapLegend" class="absolute left-3 bottom-3 bg-white/90 backdrop-blur rounded-xl p-3 shadow-sm space-y-1">
+            <div class="text-[12px] font-bold text-gray-800 mb-1">Index — Day 1</div>
+          </div>
         </div>
       </div>
 
