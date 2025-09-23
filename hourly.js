@@ -30,12 +30,6 @@ function bucketFromPct(pct){
   return "Overcast Cloud Cover";
 }
 
-// severity rank (for West/East Rajasthan)
-const BUCKET_RANK = {
-  "Clear Sky": 0, "Low Cloud Cover": 1, "Medium Cloud Cover": 2,
-  "High Cloud Cover": 3, "Overcast Cloud Cover": 4
-};
-
 /* --------- HOURLY → Day1/Day2 from NOW (IST) --------- */
 async function fetchHourlyCloudBuckets(lat, lon){
   const url = `https://api.open-meteo.com/v1/forecast`+
@@ -106,8 +100,6 @@ async function drawDistrictCharts(name, lat, lon){
     const { times, clouds, ghi } = await fetchDaylightSeries(lat, lon);
     drawLineChart({ holderId: "cloudChart", labels: times, values: clouds, yMax: 100,  title: "Hourly Cloud % (ensemble)" });
     drawLineChart({ holderId: "ghiChart",   labels: times, values: ghi,    yMax: 1000, title: "GHI (proxy) — daylight only", unit: "W/m²" });
-    const t = document.getElementById("districtTitle");
-    if (t) t.textContent = `${name} — next 48 h (daylight only, 4:00–19:00 IST)`;
   }catch(e){ console.warn("district charts failed", e); }
 }
 
@@ -197,15 +189,16 @@ async function fetchFirst(urls){
 }
 
 /* ---------------- Cloud classification table ---------------- */
+/* Leave the static HTML rows if no dynamic rows are provided. */
 function buildCloudTable(){
   const table = document.getElementById("cloudTable");
   if (!table) return;
+  const rows = (window.cloudRows || []);
+  if (!rows.length) return; // keep your static HTML intact
+
   const tbody = table.querySelector("tbody") || table.appendChild(document.createElement("tbody"));
   tbody.innerHTML = "";
-
   const pal  = window.cloudRowColors || window.forecastColors || {};
-  const rows = window.cloudRows || [];
-
   rows.forEach((r, i) => {
     const tr = document.createElement("tr");
     tr.style.background = pal[r.label] || "#fff";
@@ -272,7 +265,7 @@ function drawLegendWithButton(svg, title, linkUrl){
 /* ---------------- Draw the (only) map ---------------- */
 async function drawMap(svgId){
   const svg = d3.select(svgId);
-  svg.attr("viewBox",`0 0 ${W} ${H}`).style("width","100%").style("height",`${H}px`);
+  svg.attr("viewBox",`0 0 ${W} ${H}`).style("width","100%").style("height",`${H+20}px`);
   svg.selectAll("*").remove();
 
   const defs = svg.append("defs");
@@ -356,141 +349,6 @@ async function drawMap(svgId){
   drawLegendWithButton(svg, "Index — Day 1", SATELLITE_LINKS["#indiaMapDay1"]);
 }
 
-/* ---------------- Forecast table ---------------- */
-function buildFixedTable(){
-  const tbody = document.getElementById("forecast-table-body");
-  if (!tbody) return;
-  tbody.innerHTML = "";
-
-  const options = window.forecastOptions || [];
-  const byState = new Map();
-  (window.subdivisions || []).forEach(row => {
-    if (!byState.has(row.state)) byState.set(row.state, []);
-    byState.get(row.state).push(row);
-  });
-
-  let i = 1;
-  for (const [state, rows] of byState) {
-    rows.forEach((row, j) => {
-      const tr = document.createElement("tr");
-      tr.dataset.state  = state;
-      tr.dataset.subdiv = row.name;
-
-      const tdNo = document.createElement("td"); tdNo.textContent = i++; tr.appendChild(tdNo);
-
-      if (j === 0) {
-        const tdState = document.createElement("td");
-        tdState.textContent = state;
-        tdState.rowSpan = rows.length;
-        tdState.style.verticalAlign = "middle";
-        tr.appendChild(tdState);
-      }
-
-      const tdSub = document.createElement("td");
-      tdSub.textContent = row.name; tr.appendChild(tdSub);
-
-      const td1 = document.createElement("td"); td1.setAttribute("data-col","day1");
-      const td2 = document.createElement("td"); td2.setAttribute("data-col","day2");
-
-      const s1 = document.createElement("select");
-      const s2 = document.createElement("select");
-      [s1, s2].forEach(sel=>{
-        sel.className = "select-clean w-full";
-        (options || []).forEach(opt=>{
-          const o = document.createElement("option");
-          o.value = opt; o.textContent = opt; sel.appendChild(o);
-        });
-        if (document.body.dataset.readonly === "true") sel.disabled = true;
-        sel.addEventListener("change", updateMapColors);
-      });
-
-      td1.appendChild(s1); td2.appendChild(s2);
-      tr.appendChild(td1); tr.appendChild(td2);
-
-      tr.addEventListener("mouseenter", () => highlight(row.name, true));
-      tr.addEventListener("mouseleave", () => highlight(row.name, false));
-
-      tbody.appendChild(tr);
-    });
-  }
-}
-
-/* ---------------- Hover highlight ---------------- */
-function highlight(label, on){
-  const key = norm(label);
-  MAP_IDS.forEach(svgId=>{
-    const nodes = indexByGroup[svgId]?.get(key);
-    if (!nodes) return;
-    nodes.forEach(n => {
-      n.style.strokeWidth = on ? "2px" : "";
-      n.style.filter = on ? "drop-shadow(0 0 4px rgba(0,0,0,0.4))" : "";
-    });
-  });
-}
-
-/* ---------------- Color maps + selects ---------------- */
-function colorizeSelect(sel, label){
-  const pal = window.forecastColors || {};
-  const c   = pal[label] || "#fff";
-  sel.style.backgroundColor = c;
-  sel.style.color = "#111827";
-  sel.style.borderColor = "#e5e7eb";
-}
-function updateMapColors(){
-  const pal   = window.forecastColors || {};
-  const icons = window.forecastIcons  || {};
-
-  const rows = Array.from(document.querySelectorAll("#forecast-table-body tr")).map(tr=>{
-    const subdiv = tr.dataset.subdiv;
-    const day1Sel = tr.querySelectorAll('select')[0];
-    const day2Sel = tr.querySelectorAll('select')[1];
-    const day1 = day1Sel?.value || null;
-    const day2 = day2Sel?.value || null;
-
-    if (day1Sel) colorizeSelect(day1Sel, day1);
-    if (day2Sel) colorizeSelect(day2Sel, day2);
-
-    return { key: norm(subdiv), day1, day2, raw: subdiv };
-  });
-
-  MAP_IDS.forEach((svgId) => {
-    const dayKey = "day1"; // single map shows Day 1
-    const svg = d3.select(svgId);
-    const idxMap = indexByGroup[svgId] || new Map();
-
-    svg.selectAll(".subdiv").attr("fill","url(#diagonalHatch)");
-
-    const gIcons = ensureLayer(svg, "icon-layer").style("pointer-events","none");
-    gIcons.raise(); gIcons.selectAll("*").remove();
-
-    rows.forEach(rec => {
-      const nodes = idxMap.get(rec.key);
-      if (!nodes) return;
-      const color = pal[rec[dayKey]] || "#eee";
-      nodes.forEach(n => n.setAttribute("fill", color));
-
-      const pos = groupCentroid[svgId][rec.key];
-      if (!pos) return;
-      const [x,y] = pos;
-
-      gIcons.append("circle")
-        .attr("cx", x).attr("cy", y).attr("r", 5.5)
-        .attr("fill", "#f5a623").attr("stroke","#fff").attr("stroke-width",1.3)
-        .attr("vector-effect","non-scaling-stroke");
-
-      const emoji = icons[rec[dayKey]];
-      if (emoji){
-        gIcons.append("text")
-          .attr("x", x).attr("y", y)
-          .attr("text-anchor", "middle").attr("dominant-baseline", "central")
-          .attr("font-size", 18).attr("paint-order", "stroke")
-          .attr("stroke", "white").attr("stroke-width", 2)
-          .text(emoji);
-      }
-    });
-  });
-}
-
 /* ---------------- Punjab District Panel (Daily, STATIC) ---------------- */
 
 // Punjab districts sources (Vega + Datameet)
@@ -533,24 +391,20 @@ function showPunjabPanelAndHideIndia(){
 
   document.getElementById("indiaMapDay1")?.classList.add("hidden");
 
-  let back = document.getElementById("dp-back");
-  if (!back){
-    back = document.createElement("button");
-    back.id = "dp-back";
-    back.textContent = "← Back to India";
-    Object.assign(back.style,{margin:"8px 0 10px", padding:"6px 12px", borderRadius:"9999px", border:"1px solid #d1d5db", background:"#fff"});
-    d.prepend(back);
-    back.addEventListener("click", ()=>{
-      d.classList.add("hidden");
-      document.getElementById("indiaMapDay1")?.classList.remove("hidden");
-    });
-  }
+  let back = document.getElementById("btnBack");
+  if (back) back.classList.remove("hidden");
+  back?.addEventListener("click", ()=>{
+    d.classList.add("hidden");
+    document.getElementById("indiaMapDay1")?.classList.remove("hidden");
+    back.classList.add("hidden");
+  }, { once:true });
 }
 
 document.addEventListener("click", e=>{
   if (e.target?.id==="dp-close"){
     closeDistrictPanel();
     document.getElementById("indiaMapDay1")?.classList.remove("hidden");
+    document.getElementById("btnBack")?.classList.add("hidden");
   }
 });
 document.addEventListener("change", e=>{ if (e.target?.name==="dp-day") openPunjabDistrictView(e.target.value); });
@@ -672,8 +526,6 @@ async function openPunjabDistrictView(dayKey){
     leg.append("text").attr("x",28).attr("y",y+2).attr("font-size",12).text(lab);
   });
 
-  const ttl = document.getElementById("dp-title");
-  if (ttl) ttl.textContent = "Punjab — District Forecast";
   openDistrictPanel();
 
   // Preload panel charts with Punjab center once
@@ -694,12 +546,7 @@ function msUntilNextISTMidnight() {
 
 async function doDailyRefresh() {
   clearPunjabCache();                      // invalidate district cache
-  if (typeof autoFillDailyFromOpenMeteo === "function") {
-    await autoFillDailyFromOpenMeteo().catch(() => {});
-  } else if (typeof autoFillDaily === "function") {
-    await autoFillDaily().catch(() => {});
-  }
-  updateMapColors();
+  updateMapColors();                       // noop on hourly page (no table)
 
   const panel = document.getElementById("districtPanel");
   if (panel && !panel.classList.contains("hidden")) {
@@ -721,67 +568,21 @@ function scheduleDailyRollover() {
 }
 
 /* ---------------- Init ---------------- */
+function updateISTDate(){
+  const el = document.getElementById("now-ist");
+  const tick = ()=>{ el.textContent = new Date(Date.now()+330*60*1000).toLocaleString("en-IN"); };
+  tick(); setInterval(tick, 30*1000);
+}
 function init(){
-  if (typeof updateISTDate === "function") updateISTDate();
+  updateISTDate();
   buildCloudTable();
 
   // Draw the only map
   drawMap("#indiaMapDay1");
 
-  // Build / fill the table and color the map
-  buildFixedTable();
-  if (typeof autoFillDailyFromOpenMeteo === "function") {
-    autoFillDailyFromOpenMeteo().catch(()=>{});
-  } else if (typeof autoFillDaily === "function") {
-    autoFillDaily().catch(()=>{});
-  }
-  updateMapColors();
-
   scheduleDailyRollover();
 }
 document.addEventListener("DOMContentLoaded", init);
 
-/* --- (older helper kept for compat) --- */
-async function fetchHourlyCloud(lat, lon) {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=cloud_cover&forecast_hours=48&timezone=Asia%2FKolkata&_=${Date.now()}`;
-  const r = await fetch(url, { cache: "no-store" });
-  const j = await r.json();
-  const arr = j?.hourly?.cloud_cover || [];
-  const mean = a => a.reduce((s,x)=>s+(x??0),0)/a.length;
-  const d1 = bucketFromPct(mean(arr.slice(0,24)));
-  const d2 = bucketFromPct(mean(arr.slice(24,48)));
-  return { d1, d2 };
-}
-
-async function autoFillDaily() {
-  if (!document.body.classList.contains("auto-daily")) return;
-  const centroids = {
-    "Punjab": { lat: 30.84285, lon: 75.41854 },
-    "W-Raj": { lat: 27.15893, lon: 72.70219 },
-    "E-Raj": { lat: 25.81073, lon: 75.39164 }
-  };
-  const results = {};
-  for (const [name, {lat,lon}] of Object.entries(centroids)) {
-    try { results[name] = await fetchHourlyCloud(lat,lon); }
-    catch(e){ console.warn("fetch fail", name, e); }
-  }
-  if (results["W-Raj"] && results["E-Raj"]) {
-    const rank = {"Clear Sky":0,"Low Cloud Cover":1,"Medium Cloud Cover":2,"High Cloud Cover":3,"Overcast Cloud Cover":4};
-    results["Rajasthan"] = {
-      d1: rank[results["W-Raj"].d1] >= rank[results["E-Raj"].d1] ? results["W-Raj"].d1 : results["E-Raj"].d1,
-      d2: rank[results["W-Raj"].d2] >= rank[results["E-Raj"].d2] ? results["W-Raj"].d2 : results["E-Raj"].d2
-    };
-  }
-  document.querySelectorAll("#forecast-table-body tr").forEach(tr => {
-    const st = tr.dataset.state;
-    const s1 = tr.querySelectorAll("select")[0];
-    const s2 = tr.querySelectorAll("select")[1];
-    if (results[st]) {
-      s1.value = results[st].d1;
-      s2.value = results[st].d2;
-      s1.disabled = true; s2.disabled = true;
-    }
-  });
-  updateMapColors();
-}
-window.addEventListener("load", autoFillDaily);
+/* --- compatibility shim: unused here, but kept if you add a table later --- */
+function updateMapColors(){ /* no table on hourly page; kept for reuse */ }
