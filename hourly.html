@@ -20,6 +20,10 @@
       border-radius:12px; padding:8px 10px; box-shadow:0 10px 20px rgba(0,0,0,.18), 0 2px 6px rgba(0,0,0,.12);
       border:1px solid rgba(0,0,0,.18); font-size:13px; font-weight:700; line-height:1.2; white-space:nowrap;
     }
+    .axis text{ font-size:11px; fill:#111827 }
+    .axis path,.axis line{ stroke:#9ca3af }
+    .legend-item { display:flex; align-items:center; gap:.5rem; font-size:.8rem; }
+    .legend-swatch { width:14px; height:14px; border-radius:3px; border:1px solid rgba(0,0,0,.25); }
   </style>
 
   <!-- D3 + TopoJSON -->
@@ -44,18 +48,20 @@
   </nav>
 
   <main class="max-w-6xl mx-auto px-4 py-8">
-    <!-- Header -->
-    <header class="bg-white shadow-soft rounded-3xl p-6 mb-6">
+    <!-- Header (clean – controls moved into map card) -->
+    <header class="bg-white shadow-soft rounded-3xl p-6 mb-8">
       <h1 class="text-3xl md:text-4xl font-extrabold gradient-text">Hourly Cloud Cover (Ensemble, next 48 h)</h1>
       <p class="text-gray-500 mt-1">IST now: <span id="now-ist">—</span></p>
-      <p id="status" class="text-xs text-amber-600 mt-2 hidden"></p>
+      <p class="text-xs text-gray-500 mt-2">
+        Ensemble: Open-Meteo (always) + OpenWeatherMap (optional &mdash; add <code>?owm=YOUR_API_KEY</code> to the URL).
+      </p>
     </header>
 
     <!-- Cloud Cover Classification -->
     <section class="bg-white shadow-soft rounded-3xl p-6 mb-8">
       <h3 class="text-xl font-bold mb-4">Cloud Cover Classification</h3>
       <div class="overflow-x-auto">
-        <table class="min-w-full text-sm">
+        <table id="cloudTable" class="min-w-full text-sm">
           <thead class="bg-gray-50">
             <tr>
               <th class="text-left px-3 py-2">S. No.</th>
@@ -64,13 +70,7 @@
               <th class="text-left px-3 py-2">Cloud Type</th>
             </tr>
           </thead>
-          <tbody class="text-gray-800">
-            <tr class="bg-[#9ED1E6] font-semibold text-[#063647]"><td class="px-3 py-2">1</td><td class="px-3 py-2">0–10%</td><td class="px-3 py-2">Clear Sky</td><td class="px-3 py-2">No Cloud</td></tr>
-            <tr class="bg-[#B9DB6E] font-semibold text-[#2C4400]"><td class="px-3 py-2">2</td><td class="px-3 py-2">10–30%</td><td class="px-3 py-2">Low Cloud Cover</td><td class="px-3 py-2">Few Clouds</td></tr>
-            <tr class="bg-[#FFE93A] font-bold text-[#4A3D00]"><td class="px-3 py-2">3</td><td class="px-3 py-2">30–50%</td><td class="px-3 py-2">Medium Cloud Cover</td><td class="px-3 py-2">Scattered Clouds / Partly Cloudy</td></tr>
-            <tr class="bg-[#E28322] font-bold text-[#3A1E00]"><td class="px-3 py-2">4</td><td class="px-3 py-2">50–75%</td><td class="px-3 py-2">High Cloud Cover</td><td class="px-3 py-2">Broken Clouds / Mostly Cloudy</td></tr>
-            <tr class="bg-[#FF3A3A] font-bold text-[#4A0000]"><td class="px-3 py-2">5</td><td class="px-3 py-2">75–100%</td><td class="px-3 py-2">Overcast Cloud Cover</td><td class="px-3 py-2">Cloudy / Overcast</td></tr>
-          </tbody>
+          <tbody id="cloudTbody" class="text-gray-800"></tbody>
         </table>
       </div>
       <p class="mt-3 text-gray-500 text-sm"><strong>Note:</strong> This terminology is for local use only.</p>
@@ -78,33 +78,44 @@
 
     <!-- Main layout: Map (left) + Charts (right) -->
     <section class="grid md:grid-cols-2 gap-6">
-      <!-- Map card -->
+      <!-- Map -->
       <div class="bg-white shadow-soft rounded-3xl p-4">
         <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
-          <h3 class="text-lg font-bold">India — Day 1</h3>
-          <!-- back button appears only after opening Punjab -->
-          <button id="btnBack" class="px-3 py-1.5 rounded-lg bg-gray-100 font-semibold hidden">⬅ Back to India</button>
+          <div class="flex items-center gap-3">
+            <h3 class="text-lg font-bold">
+              <span id="mapTitle">India — selected hour</span>
+            </h3>
+            <button id="btnBack" class="px-3 py-1.5 rounded-lg bg-gray-100 font-semibold hidden">⬅ Back to India</button>
+          </div>
+          <div class="flex items-center gap-3 flex-wrap">
+            <div class="flex items-center gap-2">
+              <label class="text-sm text-gray-600">Region:</label>
+              <select id="regionSelect" class="px-3 py-1.5 rounded-lg border border-gray-200 bg-white">
+                <option value="Punjab">Punjab</option>
+                <option value="West Rajasthan">West Rajasthan</option>
+                <option value="East Rajasthan">East Rajasthan</option>
+                <option value="Rajasthan">Rajasthan (W/E max)</option>
+              </select>
+            </div>
+            <div class="flex items-center gap-2">
+              <label class="text-sm text-gray-600">Hour:</label>
+              <input id="hourSlider" type="range" min="0" max="47" value="0" class="w-44">
+              <span id="hourLabel" class="text-sm text-gray-700">—</span>
+            </div>
+            <button id="btn24" class="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 font-semibold">Next 24 h</button>
+            <button id="btn48" class="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 font-semibold">Hours 25–48</button>
+            <button id="btnAll" class="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 font-semibold">All 48 h</button>
+            <button id="btnRefresh" class="px-3 py-1.5 rounded-lg text-white" style="background:linear-gradient(135deg,#667eea,#764ba2)">Refresh</button>
+            <button id="satBtn" class="px-3 py-1.5 rounded-lg text-white" style="background:#2563eb">View satellite</button>
+          </div>
         </div>
 
         <!-- Bigger map -->
-        <svg id="indiaMapDay1"
-             viewBox="0 0 860 580"
-             preserveAspectRatio="xMidYMid meet"
-             class="w-full h-[600px] rounded-2xl bg-gray-50 border border-gray-100"></svg>
+        <div class="relative">
+          <svg id="indiaMapHourly" viewBox="0 0 860 620" class="w-full h-[560px] rounded-2xl bg-gray-50 border border-gray-100"></svg>
 
-        <!-- Punjab district panel (hidden by default) -->
-        <div id="districtPanel" class="hidden mt-4">
-          <div class="flex items-center justify-between mb-2">
-            <h4 id="dp-title" class="text-md font-extrabold">Punjab — District Forecast</h4>
-            <div class="flex items-center gap-3">
-              <label class="text-sm"><input type="radio" name="dp-day" value="day1" checked> Day 1</label>
-              <label class="text-sm"><input type="radio" name="dp-day" value="day2"> Day 2</label>
-              <button id="dp-close" class="px-3 py-1 rounded-lg bg-gray-100 font-semibold">Close</button>
-            </div>
-          </div>
-          <svg id="punjabDistrictMap" viewBox="0 0 600 520"
-               class="w-full h-[520px] rounded-2xl bg-gray-50 border border-gray-100"></svg>
-          <div class="dp-legend mt-3"></div>
+          <!-- Legend -->
+          <div id="mapLegend" class="absolute left-3 bottom-3 bg-white/90 backdrop-blur rounded-xl p-3 shadow-sm space-y-1"></div>
         </div>
       </div>
 
@@ -112,13 +123,13 @@
       <div class="space-y-6">
         <div class="bg-white shadow-soft rounded-3xl p-4">
           <h3 class="text-lg font-bold mb-2">Hourly Cloud % (<span id="seriesName">ensemble</span>)</h3>
-          <div id="cloudChart" class="w-full"></div>
+          <svg id="cloudChart" viewBox="0 0 600 300" class="w-full h-[260px]"></svg>
           <div id="sourceTags" class="text-xs text-gray-500 mt-1"></div>
         </div>
         <div class="bg-white shadow-soft rounded-3xl p-4">
           <h3 class="text-lg font-bold mb-2">GHI (proxy) — daylight only</h3>
-          <div id="ghiChart" class="w-full"></div>
-          <p class="text-[11px] text-gray-500 mt-1">Placeholder: GHI ≈ (1 − cloud%) × 950 (0 at night). We’ll replace with a proper model later.</p>
+          <svg id="ghiChart" viewBox="0 0 600 300" class="w-full h-[260px]"></svg>
+          <p class="text-[11px] text-gray-500 mt-1">Placeholder: GHI≈(1−cloud%)×950 (0 at night). We’ll replace with a proper model later.</p>
         </div>
       </div>
     </section>
