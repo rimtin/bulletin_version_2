@@ -19,6 +19,29 @@ const LAYOUT = {
   titleId:     "districtTitle",
   cloudTableId:"cloudTable"
 };
+async function loadPunjabFeatures() {
+  const geo = await fetchFirst(PUNJAB_DISTRICT_URLS);
+  if (!geo) return [];
+
+  // Normalize to Feature[] (works for both TopoJSON & GeoJSON)
+  let features;
+  if (geo.type === "Topology") {
+    const key = Object.keys(geo.objects || {})[0];
+    if (!key || !window.topojson) return [];
+    features = topojson.feature(geo, geo.objects[key]).features || [];
+  } else {
+    features = geo.features || [];
+  }
+
+  // Filter to Punjab by common state keys; if none, assume already Punjab-only
+  const STATE_KEYS = ["ST_NM","st_nm","STATE","state","state_name","State_Name","STATE_UT","NAME_1","stname"];
+  const probe = features[0]?.properties || {};
+  const sKey = STATE_KEYS.find(k => k in probe);
+
+  return sKey
+    ? features.filter(f => String(f.properties?.[sKey]).toLowerCase() === "punjab")
+    : features;
+}
 
 /* -------------------- helpers -------------------- */
 function q(sel){ return document.querySelector(sel); }
