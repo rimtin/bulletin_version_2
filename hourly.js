@@ -139,8 +139,9 @@
     </section>
   </main>
 
-  <!-- Shared palette/icons + hourly logic -->
-  <script src="data.js"></script>
-  <script src="hourly.js"></script>
+<!-- Shared palette/icons + hourly logic -->
+<script src="./data.js?v=3"></script>
+<script src="./hourly.js?v=3"></script>
+
 </body>
 </html>
