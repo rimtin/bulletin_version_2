@@ -1,4 +1,4 @@
-/* ========= Hourly page (robust fetch + adaptive map + Punjab drill-down) ========= */
+/* ========= Hourly page (robust fetch + adaptive map + Punjab drill-down + outline/points fallback) ========= */
 const IST_TZ = "Asia/Kolkata";
 const MAX_HOURS = 48;
 const W = 860, H = 620, PAD = 18;
@@ -212,15 +212,46 @@ const INDIA_GEO_URLS = [
   "https://cdn.jsdelivr.net/gh/rimtin/weather_bulletin@main/indian_met_zones.geojson"
 ];
 
-/* Punjab districts – try raw GitHub first (works with CORS), then alternates, then local */
+/* Punjab districts – try districts first; then your state outline; then local fallbacks */
 const PUNJAB_DISTRICT_URLS = [
   "https://raw.githubusercontent.com/datameet/maps/master/State/Punjab/punjab_districts.geojson",
   "https://raw.githubusercontent.com/datameet/maps/master/State/Punjab/districts.geojson",
   "https://raw.githubusercontent.com/datameet/india-geojson/master/geojson/india_district.geojson",
   "https://raw.githubusercontent.com/datameet/india-geojson/master/geojson/india_districts.geojson",
+
+  // your file (state outline)
+  "/bulletin_version_2/app/punjab.geojson",
+
+  // optional local copies
   "/bulletin_version_2/punjab_districts.geojson",
   "punjab_districts.geojson",
   "assets/punjab_districts.geojson"
+];
+
+/* Final fallback: clickable centroids for each Punjab district */
+const PUNJAB_DISTRICT_POINTS = [
+  { name:"Amritsar", lat:31.634, lon:74.873 },
+  { name:"Tarn Taran", lat:31.451, lon:74.921 },
+  { name:"Gurdaspur", lat:32.042, lon:75.405 },
+  { name:"Pathankot", lat:32.273, lon:75.652 },
+  { name:"Kapurthala", lat:31.379, lon:75.385 },
+  { name:"Jalandhar", lat:31.326, lon:75.576 },
+  { name:"Hoshiarpur", lat:31.532, lon:75.911 },
+  { name:"SBS Nagar (Nawanshahr)", lat:31.120, lon:76.109 },
+  { name:"Ludhiana", lat:30.901, lon:75.857 },
+  { name:"Fatehgarh Sahib", lat:30.644, lon:76.401 },
+  { name:"Rupnagar (Ropar)", lat:30.968, lon:76.525 },
+  { name:"SAS Nagar (Mohali)", lat:30.704, lon:76.717 },
+  { name:"Moga", lat:30.818, lon:75.174 },
+  { name:"Faridkot", lat:30.676, lon:74.754 },
+  { name:"Firozpur", lat:30.923, lon:74.613 },
+  { name:"Sri Muktsar Sahib", lat:30.474, lon:74.516 },
+  { name:"Fazilka", lat:30.407, lon:74.028 },
+  { name:"Bathinda", lat:30.210, lon:74.945 },
+  { name:"Mansa", lat:29.998, lon:75.401 },
+  { name:"Barnala", lat:30.375, lon:75.546 },
+  { name:"Sangrur", lat:30.246, lon:75.842 },
+  { name:"Patiala", lat:30.339, lon:76.386 }
 ];
 
 let mapSvg=null, mapIndex = new Map(), STATE_KEY="ST_NM";
@@ -246,7 +277,7 @@ async function fetchFirst(urls){
       console.warn("[GeoJSON error]", u, err?.message || err);
     }
   }
-  throw new Error("GeoJSON not found");
+  return null; // allow fallback to outline/points
 }
 function adaptiveProjection(fc){
   const [[minX,minY],[maxX,maxY]] = d3.geoBounds(fc);
@@ -272,6 +303,7 @@ async function drawIndia(){
   let features=[];
   try{
     const geo = await fetchFirst(INDIA_GEO_URLS);
+    if (!geo) throw new Error("No India GeoJSON");
     features = (geo.type==="Topology") ? topojson.feature(geo, geo.objects[Object.keys(geo.objects)[0]]).features : (geo.features||[]);
   }catch(e){ STATUS("India GeoJSON could not be loaded."); return; }
   if (!features.length){ STATUS("India GeoJSON has 0 features."); return; }
@@ -324,7 +356,7 @@ function colorIndiaForHour(){
   });
 }
 
-/* --------- Punjab districts --------- */
+/* --------- Punjab districts (polygons if available; otherwise outline+points or points) --------- */
 let districts=[], DKEY="name";
 
 function filterToPunjab(features){
@@ -344,63 +376,136 @@ async function drawPunjabDistricts(){
   const svg = d3.select("#indiaMapHourly"); mapSvg = svg;
   svg.selectAll("*").remove();
 
-  let raw=null;
-  try{ raw = await fetchFirst(PUNJAB_DISTRICT_URLS); }
-  catch(e){ STATUS("Punjab districts GeoJSON could not be loaded."); return; }
-
   let feats = [];
-  if (raw.type==="Topology"){
-    const obj = raw.objects?.districts || raw.objects?.Districts || raw.objects[Object.keys(raw.objects)[0]];
-    feats = topojson.feature(raw, obj).features || [];
-  }else{
-    feats = raw.features || [];
+  const raw = await fetchFirst(PUNJAB_DISTRICT_URLS);
+
+  // Try to extract features if we got a GeoJSON/TopoJSON file
+  if (raw){
+    if (raw.type === "Topology"){
+      const obj = raw.objects?.districts || raw.objects?.Districts || raw.objects[Object.keys(raw.objects)[0]];
+      feats = topojson.feature(raw, obj).features || [];
+    } else if (raw.type === "Feature"){
+      feats = [raw]; // single state outline
+    } else {
+      feats = raw.features || [];
+    }
   }
 
-  feats = filterToPunjab(feats);
-  if (!feats.length){ STATUS("No districts matched Punjab in the loaded file."); return; }
-  STATUS("");
+  // If this file is all-India districts, filter to just Punjab
+  if (feats.length > 1) {
+    feats = filterToPunjab(feats);
+  }
 
-  const guess = detectKeys(feats);
-  DKEY = guess.NAME_KEY;
+  // District polygons available?
+  if (feats && feats.length >= 5){
+    const guess = detectKeys(feats);
+    DKEY = guess.NAME_KEY;
 
-  const fc = { type:"FeatureCollection", features: feats };
-  const projection = adaptiveProjection(fc);
-  const path = d3.geoPath(projection);
-  const tt = ensureTooltip();
-  districtCentroidByName.clear();
+    const fc = { type:"FeatureCollection", features: feats };
+    const projection = adaptiveProjection(fc);
+    const path = d3.geoPath(projection);
+    const tt = ensureTooltip();
+    districtCentroidByName.clear();
 
-  const g = svg.append("g");
-  const paths = g.selectAll("path").data(feats).join("path")
-    .attr("class","district").attr("d", path)
-    .attr("fill","#f3f4f6").attr("stroke","#666").attr("stroke-width",.8)
-    .style("cursor","pointer")
-    .on("pointermove", function(evt,d){
-      const raw = String(d?.properties?.[DKEY]||"");
-      const pad=12, w=240, h=40, vw=innerWidth, vh=innerHeight;
-      let x=evt.clientX+pad, y=evt.clientY+pad; if(x+w>vw)x=vw-w-pad; if(y+h>vh)y=vh-h-pad;
-      tt.style("opacity",1).html(raw).style("left",x+"px").style("top",y+"px");
-    }).on("pointerleave", ()=>tt.style("opacity",0))
-    .on("click", async (_,d)=>{
+    const g = svg.append("g");
+    const paths = g.selectAll("path").data(feats).join("path")
+      .attr("class","district").attr("d", path)
+      .attr("fill","#f3f4f6").attr("stroke","#666").attr("stroke-width",.8)
+      .style("cursor","pointer")
+      .on("pointermove", function(evt,d){
+        const raw = String(d?.properties?.[DKEY]||"");
+        const pad=12, w=240, h=40, vw=innerWidth, vh=innerHeight;
+        let x=evt.clientX+pad, y=evt.clientY+pad; if(x+w>vw)x=vw-w-pad; if(y+h>vh)y=vh-h-pad;
+        tt.style("opacity",1).html(raw).style("left",x+"px").style("top",y+"px");
+      }).on("pointerleave", ()=>tt.style("opacity",0))
+      .on("click", async (_,d)=>{
+        const label = String(d?.properties?.[DKEY]||"").trim();
+        if (!label) return;
+        CURRENT_DISTRICT = label;
+        const c = path.centroid(d), lonlat = projection.invert(c);
+        if (!lonlat) return;
+        await loadSeriesForPoint(label, lonlat[1], lonlat[0]);
+        colorPunjabForHour();
+        repaintCharts();
+      });
+
+    // cache centroids
+    paths.each(function(d){
       const label = String(d?.properties?.[DKEY]||"").trim();
-      if (!label) return;
-      CURRENT_DISTRICT = label;
-      const c = path.centroid(d), lonlat = projection.invert(c);
-      if (!lonlat) return;
-      await loadSeriesForPoint(label, lonlat[1], lonlat[0]);
-      colorPunjabForHour();
-      repaintCharts();
+      const lonlat = projection.invert(path.centroid(d));
+      if (label && lonlat) districtCentroidByName.set(label, {lat:lonlat[1], lon:lonlat[0]});
     });
 
-  // cache centroids
-  paths.each(function(d){
-    const label = String(d?.properties?.[DKEY]||"").trim();
-    const lonlat = projection.invert(path.centroid(d));
-    if (label && lonlat) districtCentroidByName.set(label, {lat:lonlat[1], lon:lonlat[0]});
-  });
+    districts = feats;
+    colorPunjabForHour();
+    STATUS("");
+    return;
+  }
 
-  districts = feats;
-  colorPunjabForHour();
+  // --- Outline or no polygons: render state outline (if present) + clickable points ---
+  const outlineFC = (feats && feats.length)
+      ? { type: "FeatureCollection", features: feats }
+      : { type: "FeatureCollection", features: [] };
+
+  const fcForFit = outlineFC.features.length
+      ? outlineFC
+      : { // no outline? fit to points instead
+          type: "FeatureCollection",
+          features: PUNJAB_DISTRICT_POINTS.map(p => ({
+            type:"Feature",
+            geometry:{ type:"Point", coordinates:[p.lon, p.lat] },
+            properties:{}
+          }))
+        };
+
+  const projection = d3.geoMercator().fitExtent([[PAD,PAD],[W-PAD,H-PAD]], fcForFit);
+  const path = d3.geoPath(projection);
+  districtCentroidByName.clear();
+
+  // draw outline if we have it
+  if (outlineFC.features.length){
+    svg.append("g")
+      .selectAll("path")
+      .data(outlineFC.features)
+      .join("path")
+      .attr("d", path)
+      .attr("fill", "#f8fafc")
+      .attr("stroke", "#64748b")
+      .attr("stroke-width", 1);
+  }
+
+  // points fallback (clickable districts)
+  const g = svg.append("g");
+  function paintPoints(){
+    g.selectAll("g.pt").remove();
+    PUNJAB_DISTRICT_POINTS.forEach(p=>{
+      const series = DATA[p.name];
+      const b = series?.buckets?.[HOUR_IDX];
+      const clr = b ? (COLORS[b] || "#94a3b8") : "#94a3b8";
+      const [x,y] = projection([p.lon, p.lat]);
+
+      const node = g.append("g").attr("class","pt").attr("transform",`translate(${x},${y})`).style("cursor","pointer");
+      node.append("circle").attr("r",8).attr("fill",clr).attr("stroke","#374151").attr("stroke-width",1);
+      node.append("circle").attr("r",2).attr("fill","#111827");
+      node.append("text").attr("x",12).attr("y",4).attr("font-size","11px").attr("font-weight","700").attr("fill","#111827").text(p.name);
+
+      node.on("click", async ()=>{
+        CURRENT_DISTRICT = p.name;
+        await loadSeriesForPoint(p.name, p.lat, p.lon);
+        paintPoints();
+        repaintCharts();
+      });
+    });
+  }
+
+  paintPoints();
+  (async ()=>{ for (const p of PUNJAB_DISTRICT_POINTS){ try{ await loadSeriesForPoint(p.name, p.lat, p.lon); }catch{} } paintPoints(); })();
+
+  // when hour changes, repaint dots
+  const obs = new MutationObserver(paintPoints);
+  obs.observe(document.getElementById("hourLabel"), { childList:true });
 }
+
 function colorPunjabForHour(){
   if (MODE!=="punjabDistrict" || !mapSvg) return;
   mapSvg.selectAll(".district").attr("fill", d=>{
@@ -455,11 +560,13 @@ async function refreshIndiaSeries(){
 function repaintAll(){
   const src = (MODE==="punjabDistrict" && CURRENT_DISTRICT) ? DATA[CURRENT_DISTRICT] : DATA[REGION];
   setHourLabel(src?.times);
-  if (MODE==="india") colorIndiaForHour(); else colorPunjabForHour();
+  if (MODE==="india") colorIndiaForHour(); else {
+    try { colorPunjabForHour(); } catch {}
+  }
   repaintCharts();
 }
 
-/* ---------- Robust startup ---------- */
+/* ---------- Startup & wiring ---------- */
 async function startHourly(){
   try{
     updateNowIST(); setInterval(updateNowIST, 60000);
