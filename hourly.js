@@ -75,7 +75,7 @@ async function fetchOpenMeteo(lat, lon){
   return { times, vals, sunrise, sunset };
 }
 
-// Optional: OpenWeatherMap OneCall (?owm=KEY). Uses clouds% from hourly.
+// Optional: OpenWeatherMap OneCall (?owm=KEY)
 async function fetchOpenWeatherMap(lat, lon){
   const key = getParam("owm") || window.OWM_KEY;
   if (!key) return null;
@@ -212,12 +212,13 @@ const INDIA_GEO_URLS = [
   "https://cdn.jsdelivr.net/gh/rimtin/weather_bulletin@main/indian_met_zones.geojson"
 ];
 
-/* Punjab districts – reliable mirrors first, then local fallbacks */
+/* Punjab districts – try raw GitHub first (works with CORS), then alternates, then local */
 const PUNJAB_DISTRICT_URLS = [
   "https://raw.githubusercontent.com/datameet/maps/master/State/Punjab/punjab_districts.geojson",
-  "https://cdn.jsdelivr.net/gh/datameet/maps@master/State/Punjab/punjab_districts.geojson",
-  "https://raw.githubusercontent.com/nikhilesh-bagde/India-States-and-Districts/master/geojson/punjab_districts.geojson",
-  "https://raw.githubusercontent.com/geohacker/india/master/district/2011/geojson/punjab_district.geojson",
+  "https://raw.githubusercontent.com/datameet/maps/master/State/Punjab/districts.geojson",
+  "https://raw.githubusercontent.com/datameet/india-geojson/master/geojson/india_district.geojson",
+  "https://raw.githubusercontent.com/datameet/india-geojson/master/geojson/india_districts.geojson",
+  "/bulletin_version_2/punjab_districts.geojson",
   "punjab_districts.geojson",
   "assets/punjab_districts.geojson"
 ];
@@ -239,8 +240,11 @@ async function fetchFirst(urls){
   for (const u of urls){
     try{
       const r = await fetch(u,{cache:"no-store", mode:"cors"});
-      if (r.ok) { console.log("[GeoJSON ok]", u); return await r.json(); }
-    }catch{}
+      if (r.ok) { console.log("[GeoJSON OK]", u); return await r.json(); }
+      console.warn("[GeoJSON fail]", r.status, u);
+    }catch(err){
+      console.warn("[GeoJSON error]", u, err?.message || err);
+    }
   }
   throw new Error("GeoJSON not found");
 }
@@ -458,18 +462,15 @@ function repaintAll(){
 /* ---------- Robust startup ---------- */
 async function startHourly(){
   try{
-    console.log("[hourly] start");
     updateNowIST(); setInterval(updateNowIST, 60000);
     buildCloudTableAndLegend();
 
     await drawIndia();
-    console.log("[hourly] India map drawn");
 
     try{
       await refreshIndiaSeries();
-      STATUS(""); console.log("[hourly] region series loaded");
+      STATUS("");
     }catch(e){
-      console.error(e);
       STATUS("Could not load hourly data. (Open-Meteo may be unreachable.) The page will retry on Refresh.");
     }
 
@@ -516,10 +517,7 @@ async function startHourly(){
         STATUS(""); repaintAll();
       }catch{ STATUS("Auto-refresh failed; will try again next hour."); }
     }, 60*60*1000);
-
-    console.log("[hourly] init complete");
   }catch(err){
-    console.error("[hourly] fatal init error:", err);
     STATUS("Init error: " + (err?.message || String(err)));
   }
 }
@@ -531,12 +529,6 @@ if (document.readyState === "loading") {
   startHourly();
 }
 
-/* --- hard-boot + error surfacing (belt & suspenders) --- */
-window.addEventListener("error", e => {
-  console.error("[hourly] runtime error:", e.message);
-  STATUS("Error: " + e.message);
-});
-window.addEventListener("unhandledrejection", e => {
-  console.error("[hourly] unhandled promise rejection:", e.reason);
-  STATUS("Error: " + (e.reason?.message || e.reason));
-});
+/* --- error surfacing --- */
+window.addEventListener("error", e => STATUS("Error: " + e.message));
+window.addEventListener("unhandledrejection", e => STATUS("Error: " + (e.reason?.message || e.reason)));
