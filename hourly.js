@@ -124,8 +124,11 @@ function buildCloudTableAndLegend(){
       tb.appendChild(tr);
     });
   }
-  const legend = document.getElementById("mapLegend"); if (legend){
-    legend.innerHTML = "";
+
+  // keep the "Index — Day 1" header; only (re)build legend items
+  const legend = document.getElementById("mapLegend"); 
+  if (legend){
+    legend.querySelectorAll(".legend-item").forEach(n => n.remove());
     Object.entries(COLORS).forEach(([k,v])=>{
       const div = document.createElement("div");
       div.className = "legend-item";
@@ -206,13 +209,12 @@ const INDIA_GEO_URLS = [
   "https://cdn.jsdelivr.net/gh/rimtin/weather_bulletin@main/indian_met_zones.geojson"
 ];
 
-/* Punjab districts: try state-only files first, then fall back to all-India districts */
+/* ✅ Punjab districts from reliable mirrors (Vega first), plus a Datameet all-India fallback */
 const PUNJAB_DISTRICT_URLS = [
-  "punjab_districts.geojson",
-  "assets/punjab_districts.geojson",
-  "https://raw.githubusercontent.com/datameet/india-geojson/master/state/punjab/punjab_districts.geojson",
-  "https://raw.githubusercontent.com/datameet/maps/master/State/Punjab/punjab_districts.geojson",
-  "https://raw.githubusercontent.com/nisrulz/india-geojson/master/india_districts.geojson" // full India -> we'll filter
+  "https://vega.github.io/vega-datasets/data/india-districts.json",
+  "https://raw.githubusercontent.com/vega/vega-datasets/main/data/india-districts.json",
+  "https://cdn.jsdelivr.net/gh/vega/vega-datasets@master/data/india-districts.json",
+  "https://raw.githubusercontent.com/datameet/india-geojson/master/geojson/india_district.geojson"
 ];
 
 let mapSvg=null, mapIndex = new Map(), STATE_KEY="ST_NM";
@@ -224,7 +226,7 @@ function ensureTooltip(){
 }
 function detectKeys(features){
   const sample = features[0]?.properties||{};
-  const sKeys=["ST_NM","st_nm","STATE","STATE_UT","NAME_1","state_name","stname","State"];
+  const sKeys=["ST_NM","st_nm","STATE","STATE_UT","NAME_1","state_name","stname","State","state"];
   const dKeys=["DISTRICT","district","dtname","name","NAME_2","Name","dist_name"];
   return { STATE_KEY: sKeys.find(k=>k in sample)||"ST_NM", NAME_KEY: dKeys.find(k=>k in sample)||"name" };
 }
@@ -232,7 +234,7 @@ async function fetchFirst(urls){
   for (const u of urls){
     try{
       const r = await fetch(u,{cache:"no-store", mode:"cors"});
-      if (r.ok) return await r.json();
+      if (r.ok) { console.log("[GeoJSON ok]", u); return await r.json(); }
     }catch{}
   }
   throw new Error("GeoJSON not found");
@@ -318,9 +320,10 @@ let districts=[], DKEY="name";
 function filterToPunjab(features){
   if (!features?.length) return [];
   const { STATE_KEY: SKEY } = detectKeys(features);
-  const isPunjab = v => String(v||"").toLowerCase().includes("punjab");
-  const allStates = new Set(features.map(f => String(f.properties?.[SKEY]||"").toLowerCase()));
-  if (allStates.size === 1 && isPunjab([...allStates][0])) return features;
+  const isPunjab = v => String(v||"").toLowerCase() === "punjab";
+  // If features are already Punjab-only, keep them; else filter
+  const stateVals = new Set(features.map(f => String(f.properties?.[SKEY]||"").toLowerCase()));
+  if (stateVals.size === 1 && isPunjab([...stateVals][0])) return features;
   return features.filter(f => isPunjab(f.properties?.[SKEY]));
 }
 
@@ -338,7 +341,7 @@ async function drawPunjabDistricts(){
 
   let feats = [];
   if (raw.type==="Topology"){
-    const obj = raw.objects[Object.keys(raw.objects)[0]];
+    const obj = raw.objects?.districts || raw.objects?.Districts || raw.objects[Object.keys(raw.objects)[0]];
     feats = topojson.feature(raw, obj).features || [];
   }else{
     feats = raw.features || [];
@@ -446,55 +449,78 @@ function repaintAll(){
   repaintCharts();
 }
 
-/* ---------- Wire ---------- */
-document.addEventListener("DOMContentLoaded", async ()=>{
-  updateNowIST(); setInterval(updateNowIST, 60000);
-  buildCloudTableAndLegend();
-
-  await drawIndia();
-
-  // initial data
+/* ---------- Robust startup ---------- */
+async function startHourly(){
   try{
-    await refreshIndiaSeries();
-    STATUS("");
-  }catch(e){
-    STATUS("Could not load hourly data. (Open-Meteo may be unreachable.) The page will retry on Refresh.");
+    console.log("[hourly] start");
+    updateNowIST(); setInterval(updateNowIST, 60000);
+    buildCloudTableAndLegend();
+
+    await drawIndia();
+    console.log("[hourly] India map drawn");
+
+    try{
+      await refreshIndiaSeries();
+      STATUS(""); console.log("[hourly] region series loaded");
+    }catch(e){
+      console.error(e);
+      STATUS("Could not load hourly data. (Open-Meteo may be unreachable.) The page will retry on Refresh.");
+    }
+
+    repaintAll();
+
+    // controls
+    const slider = document.getElementById("hourSlider");
+    if (slider){
+      let t=null;
+      slider.addEventListener("input", e=>{
+        HOUR_IDX = +e.target.value;
+        clearTimeout(t); t=setTimeout(repaintAll,60);
+      });
+    }
+    const btn24 = document.getElementById("btn24"); if (btn24) btn24.addEventListener("click", ()=>{ VIEW="24"; repaintCharts(); });
+    const btn48 = document.getElementById("btn48"); if (btn48) btn48.addEventListener("click", ()=>{ VIEW="48"; repaintCharts(); });
+    const btnAll = document.getElementById("btnAll"); if (btnAll) btnAll.addEventListener("click", ()=>{ VIEW="all"; repaintCharts(); });
+    const regionSel = document.getElementById("regionSelect");
+    if (regionSel) regionSel.addEventListener("change", e=>{ REGION = e.target.value; if (MODE==="india") repaintAll(); });
+    const btnRefresh = document.getElementById("btnRefresh");
+    if (btnRefresh) btnRefresh.addEventListener("click", async ()=>{
+      try{
+        if (MODE==="india") await refreshIndiaSeries();
+        else if (MODE==="punjabDistrict" && CURRENT_DISTRICT){
+          const c = districtCentroidByName.get(CURRENT_DISTRICT);
+          if (c) await loadSeriesForPoint(CURRENT_DISTRICT, c.lat, c.lon);
+        }
+        STATUS(""); repaintAll();
+      }catch{ STATUS("Refresh failed. Please try again."); }
+    });
+    const satBtn = document.getElementById("satBtn");
+    if (satBtn) satBtn.addEventListener("click", ()=> window.open("https://zoom.earth/#view=22.5,79.0,5z/layers=labels,clouds","_blank","noopener"));
+    const backBtn = document.getElementById("btnBack");
+    if (backBtn) backBtn.addEventListener("click", async ()=>{ await drawIndia(); repaintAll(); });
+
+    // auto refresh hourly
+    setInterval(async ()=>{
+      try{
+        if (MODE==="india") await refreshIndiaSeries();
+        else if (MODE==="punjabDistrict" && CURRENT_DISTRICT){
+          const c = districtCentroidByName.get(CURRENT_DISTRICT);
+          if (c) await loadSeriesForPoint(CURRENT_DISTRICT, c.lat, c.lon);
+        }
+        STATUS(""); repaintAll();
+      }catch{ STATUS("Auto-refresh failed; will try again next hour."); }
+    }, 60*60*1000);
+
+    console.log("[hourly] init complete");
+  }catch(err){
+    console.error("[hourly] fatal init error:", err);
+    STATUS("Init error: " + (err?.message || String(err)));
   }
-  repaintAll();
+}
 
-  // controls
-  const slider = document.getElementById("hourSlider");
-  if (slider) slider.addEventListener("input", e=>{ HOUR_IDX = +e.target.value; repaintAll(); });
-  const btn24 = document.getElementById("btn24"); if (btn24) btn24.addEventListener("click", ()=>{ VIEW="24"; repaintCharts(); });
-  const btn48 = document.getElementById("btn48"); if (btn48) btn48.addEventListener("click", ()=>{ VIEW="48"; repaintCharts(); });
-  const btnAll = document.getElementById("btnAll"); if (btnAll) btnAll.addEventListener("click", ()=>{ VIEW="all"; repaintCharts(); });
-  const regionSel = document.getElementById("regionSelect");
-  if (regionSel) regionSel.addEventListener("change", e=>{ REGION = e.target.value; if (MODE==="india") repaintAll(); });
-  const btnRefresh = document.getElementById("btnRefresh");
-  if (btnRefresh) btnRefresh.addEventListener("click", async ()=>{
-    try{
-      if (MODE==="india") await refreshIndiaSeries();
-      else if (MODE==="punjabDistrict" && CURRENT_DISTRICT){
-        const c = districtCentroidByName.get(CURRENT_DISTRICT);
-        if (c) await loadSeriesForPoint(CURRENT_DISTRICT, c.lat, c.lon);
-      }
-      STATUS(""); repaintAll();
-    }catch{ STATUS("Refresh failed. Please try again."); }
-  });
-  const satBtn = document.getElementById("satBtn");
-  if (satBtn) satBtn.addEventListener("click", ()=> window.open("https://zoom.earth/#view=22.5,79.0,5z/layers=labels,clouds","_blank","noopener"));
-  const backBtn = document.getElementById("btnBack");
-  if (backBtn) backBtn.addEventListener("click", async ()=>{ await drawIndia(); repaintAll(); });
-
-  // auto refresh hourly
-  setInterval(async ()=>{
-    try{
-      if (MODE==="india") await refreshIndiaSeries();
-      else if (MODE==="punjabDistrict" && CURRENT_DISTRICT){
-        const c = districtCentroidByName.get(CURRENT_DISTRICT);
-        if (c) await loadSeriesForPoint(CURRENT_DISTRICT, c.lat, c.lon);
-      }
-      STATUS(""); repaintAll();
-    }catch{ STATUS("Auto-refresh failed; will try again next hour."); }
-  }, 60*60*1000);
-});
+/* Run whether DOM is ready or already parsed */
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", startHourly);
+} else {
+  startHourly();
+}
