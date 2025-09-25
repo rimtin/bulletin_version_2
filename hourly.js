@@ -1,4 +1,3 @@
-
 /* ========= Hourly page (robust fetch + adaptive map + Punjab drill-down) ========= */
 const IST_TZ = "Asia/Kolkata";
 const MAX_HOURS = 48;
@@ -19,7 +18,11 @@ const CENTROIDS = {
 };
 
 const COLORS = (window.forecastColors || {
-  "Clear Sky":"#66CCFF","Low Cloud Cover":"#57E66D","Medium Cloud Cover":"#FFF500","High Cloud Cover":"#FF8A00","Overcast Cloud Cover":"#FF0000"
+  "Clear Sky":"#66CCFF",
+  "Low Cloud Cover":"#57E66D",
+  "Medium Cloud Cover":"#FFF500",
+  "High Cloud Cover":"#FF8A00",
+  "Overcast Cloud Cover":"#FF0000"
 });
 
 /* ---------- Helpers ---------- */
@@ -47,7 +50,7 @@ function setSeriesName(){
   el.textContent = (MODE==="punjabDistrict" && CURRENT_DISTRICT) ? CURRENT_DISTRICT : "ensemble";
 }
 
-/* ---------- Fetchers (robust) ---------- */
+/* ---------- Fetchers ---------- */
 function buildOMUrl(lat,lon,parts="hourly=cloud_cover&forecast_hours=48"){
   return `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&${parts}&timezone=${encodeURIComponent(IST_TZ)}`;
 }
@@ -61,7 +64,6 @@ async function fetchOpenMeteo(lat, lon){
   if (rh.status!=="fulfilled" || !rh.value.ok) throw new Error("Open-Meteo hourly failed");
   const jh = await rh.value.json();
 
-  // sunrise/sunset optional
   let sunrise=[], sunset=[];
   if (rs.status==="fulfilled" && rs.value.ok){
     const js = await rs.value.json();
@@ -73,7 +75,7 @@ async function fetchOpenMeteo(lat, lon){
   return { times, vals, sunrise, sunset };
 }
 
-// Optional: OpenWeatherMap OneCall (needs ?owm=KEY). Uses clouds% from hourly.
+// Optional: OpenWeatherMap OneCall (?owm=KEY). Uses clouds% from hourly.
 async function fetchOpenWeatherMap(lat, lon){
   const key = getParam("owm") || window.OWM_KEY;
   if (!key) return null;
@@ -84,7 +86,7 @@ async function fetchOpenWeatherMap(lat, lon){
     const j = await r.json();
     const hours = (j.hourly||[]).slice(0,MAX_HOURS);
     return { vals: hours.map(h => Number(h.clouds)||0) };
-  }catch{ return null; } // silently ignore OWM problems
+  }catch{ return null; }
 }
 
 function ensembleSeries(a, b){
@@ -127,7 +129,7 @@ function buildCloudTableAndLegend(){
   }
 
   // keep the "Index — Day 1" header; only (re)build legend items
-  const legend = document.getElementById("mapLegend"); 
+  const legend = document.getElementById("mapLegend");
   if (legend){
     legend.querySelectorAll(".legend-item").forEach(n => n.remove());
     Object.entries(COLORS).forEach(([k,v])=>{
@@ -210,12 +212,14 @@ const INDIA_GEO_URLS = [
   "https://cdn.jsdelivr.net/gh/rimtin/weather_bulletin@main/indian_met_zones.geojson"
 ];
 
-/* ✅ Punjab districts from reliable mirrors (Vega first), plus a Datameet all-India fallback */
+/* Punjab districts – reliable mirrors first, then local fallbacks */
 const PUNJAB_DISTRICT_URLS = [
-  "https://vega.github.io/vega-datasets/data/india-districts.json",
-  "https://raw.githubusercontent.com/vega/vega-datasets/main/data/india-districts.json",
-  "https://cdn.jsdelivr.net/gh/vega/vega-datasets@master/data/india-districts.json",
-  "https://raw.githubusercontent.com/datameet/india-geojson/master/geojson/india_district.geojson"
+  "https://raw.githubusercontent.com/datameet/maps/master/State/Punjab/punjab_districts.geojson",
+  "https://cdn.jsdelivr.net/gh/datameet/maps@master/State/Punjab/punjab_districts.geojson",
+  "https://raw.githubusercontent.com/nikhilesh-bagde/India-States-and-Districts/master/geojson/punjab_districts.geojson",
+  "https://raw.githubusercontent.com/geohacker/india/master/district/2011/geojson/punjab_district.geojson",
+  "punjab_districts.geojson",
+  "assets/punjab_districts.geojson"
 ];
 
 let mapSvg=null, mapIndex = new Map(), STATE_KEY="ST_NM";
@@ -280,6 +284,7 @@ async function drawIndia(){
   const paths = g.selectAll("path").data(features).join("path")
     .attr("class","subdiv").attr("d", path)
     .attr("fill","url(#diag)").attr("stroke","#666").attr("stroke-width",.7)
+    .style("cursor","pointer")
     .on("pointermove", function(evt,d){
       const raw = d?.properties?.[STATE_KEY] ?? "";
       const key = norm(raw);
@@ -315,14 +320,13 @@ function colorIndiaForHour(){
   });
 }
 
-/* --------- Punjab districts (robust) --------- */
+/* --------- Punjab districts --------- */
 let districts=[], DKEY="name";
 
 function filterToPunjab(features){
   if (!features?.length) return [];
   const { STATE_KEY: SKEY } = detectKeys(features);
   const isPunjab = v => String(v||"").toLowerCase() === "punjab";
-  // If features are already Punjab-only, keep them; else filter
   const stateVals = new Set(features.map(f => String(f.properties?.[SKEY]||"").toLowerCase()));
   if (stateVals.size === 1 && isPunjab([...stateVals][0])) return features;
   return features.filter(f => isPunjab(f.properties?.[SKEY]));
@@ -365,6 +369,7 @@ async function drawPunjabDistricts(){
   const paths = g.selectAll("path").data(feats).join("path")
     .attr("class","district").attr("d", path)
     .attr("fill","#f3f4f6").attr("stroke","#666").attr("stroke-width",.8)
+    .style("cursor","pointer")
     .on("pointermove", function(evt,d){
       const raw = String(d?.properties?.[DKEY]||"");
       const pad=12, w=240, h=40, vw=innerWidth, vh=innerHeight;
@@ -525,3 +530,13 @@ if (document.readyState === "loading") {
 } else {
   startHourly();
 }
+
+/* --- hard-boot + error surfacing (belt & suspenders) --- */
+window.addEventListener("error", e => {
+  console.error("[hourly] runtime error:", e.message);
+  STATUS("Error: " + e.message);
+});
+window.addEventListener("unhandledrejection", e => {
+  console.error("[hourly] unhandled promise rejection:", e.reason);
+  STATUS("Error: " + (e.reason?.message || e.reason));
+});
