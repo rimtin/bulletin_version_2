@@ -474,6 +474,21 @@ async function drawPunjabDistricts(){
       .attr("stroke-width", 1);
   }
 
+      // Prefetch all districts so the map auto-fills
+    (async () => {
+      try {
+        const entries = Array.from(districtCentroidByName.entries()); // [name, {lat,lon}]
+        await Promise.allSettled(
+          entries.map(([name, c]) => loadSeriesForPoint(name, c.lat, c.lon))
+        );
+      } catch (e) {
+        // non-fatal
+      }
+      // Once data is in, recolor polygons and refresh charts
+      colorPunjabForHour();
+      repaintCharts();
+    })();
+
   // points fallback (clickable districts)
   const g = svg.append("g");
   function paintPoints(){
