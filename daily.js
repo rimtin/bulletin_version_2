@@ -1,8 +1,8 @@
 // === Map + table app (legend + satellite + hourly Day1/Day2 + Punjab panel + IST rollover, ACCURATE & AUTO-UPDATING) ===
 const W = 860, H = 580, PAD = 18;
-const MATCH_KEY = "ST_NM";
-let STATE_KEY = "ST_NM";
-let NAME_KEY  = "name";
+const MATCH_KEY = "ST_NM";        // Sub-division display name in your GeoJSON
+let STATE_KEY = "ST_NM";          // Will be auto-detected
+let NAME_KEY  = "name";           // Will be auto-detected
 
 // per-map stores
 const indexByGroup  = { "#indiaMapDay1": new Map(), "#indiaMapDay2": new Map() };
@@ -31,11 +31,9 @@ const CLOUD_BUCKETS = [
 ];
 const BUCKET_RANK = { "Clear Sky":0,"Low Cloud Cover":1,"Medium Cloud Cover":2,"High Cloud Cover":3,"Overcast Cloud Cover":4 };
 
-// Minimal fallback centroids (use window.regionCentroids for full coverage)
-const CENTROIDS = {
-  "Punjab":           { lat: 31.1, lon: 75.4 },
-  "West Rajasthan":   { lat: 26.9, lon: 73.2 },
-  "East Rajasthan":   { lat: 26.9, lon: 75.8 }
+/* ---- minimal manual fallbacks (kept, but the new seeding covers all) ---- */
+const FALLBACK_CENTROIDS = {
+  "Punjab": [[31.1,75.4]], "West Rajasthan": [[26.9,73.2]], "East Rajasthan": [[26.9,75.8]]
 };
 
 /* ---------------- Helpers ---------------- */
@@ -198,6 +196,41 @@ function drawLegendWithButton(svg, title, linkUrl){
     .text("View satellite");
 }
 
+/* ---------------- NEW: seed centroids for ALL sub-divisions ---------------- */
+// Build lat/lon centroids for every sub-division (from GeoJSON) so the
+// ensemble forecast runs for *all* rows without manual coordinates.
+function seedRegionCentroidsFromFeatures(features){
+  if (!features?.length) return;
+  if (!window.regionCentroids) window.regionCentroids = {};
+
+  const groups = new Map();
+  for (const f of features){
+    const subdivName = String(f.properties?.[MATCH_KEY] ?? "").trim();
+    if (!subdivName) continue;
+    const stName = String(f.properties?.[STATE_KEY] ?? "").trim();
+    const k = norm(subdivName);
+    let g = groups.get(k);
+    if (!g){ g = { name: subdivName, feats: [], states: new Set() }; groups.set(k, g); }
+    g.feats.push(f);
+    if (stName) g.states.add(stName);
+  }
+
+  groups.forEach(({name, feats, states}) => {
+    const fc = { type: "FeatureCollection", features: feats };
+    const [lon, lat] = d3.geoCentroid(fc);
+    if (Number.isFinite(lat) && Number.isFinite(lon)){
+      // Save by plain sub-division name:
+      window.regionCentroids[name] = [[lat, lon]];
+      // Also save by "State:Subdivision" (for tables keyed that way):
+      states.forEach(st => {
+        window.regionCentroids[`${st}:${name}`] = [[lat, lon]];
+      });
+    }
+  });
+
+  console.log("[Centroids] Sub-divisions seeded:", Object.keys(window.regionCentroids).length);
+}
+
 /* ---------------- DRAW MAP ---------------- */
 async function drawMap(svgId){
   const svg = d3.select(svgId);
@@ -222,6 +255,10 @@ async function drawMap(svgId){
   if (!features.length){ alert("GeoJSON has 0 features"); return; }
 
   detectKeys(features);
+
+  // NEW: seed centroids for *all* sub-divisions from polygons
+  seedRegionCentroidsFromFeatures(features);
+
   const fc = { type:"FeatureCollection", features };
   const projection = pickProjection(fc);
   const path = d3.geoPath(projection);
@@ -273,7 +310,7 @@ async function drawMap(svgId){
   });
   indexByGroup[svgId] = idx;
 
-  // projected centroid per group
+  // projected centroid per group (for icon placement)
   groupCentroid[svgId] = {};
   const gp = d3.geoPath(projection);
   groups.forEach((arr, key) => {
@@ -563,10 +600,10 @@ async function updateAllForecasts(){
     const state = tr.dataset.state, subdiv = tr.dataset.subdiv;
     const regionKey = `${state}:${subdiv}`;
 
-    // gather centroids
+    // centroids priority: seeded "State:Subdiv" -> "Subdiv" -> fallback manual
     const cents = (window.regionCentroids?.[regionKey])
       || (window.regionCentroids?.[subdiv])
-      || (CENTROIDS[subdiv] ? [[CENTROIDS[subdiv].lat, CENTROIDS[subdiv].lon]] : []);
+      || (FALLBACK_CENTROIDS[subdiv] || []);
     if(!cents.length){ console.warn('No centroid for', regionKey); continue; }
 
     // fetch per model → average centroids → ensemble median
